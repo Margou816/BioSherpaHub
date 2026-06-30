@@ -1,0 +1,25 @@
+﻿# BioSherpa Transcriptome Agent configuration
+# Demo phase (0.0.x) — minimal config, no runtime
+
+agent:
+  name: "BioSherpa Transcriptome"
+  version: "0.0.1"
+  description: "DESeq2-based differential expression analysis for RNA-seq data"
+
+# All paths are relative to BIOSHERPA_HOME
+# Set BIOSHERPA_HOME=F:\BioSherpa\RD\biosherpa-openclaw (or wherever the project lives)
+
+skills:
+  - name: differential-expression
+    file: agents/transcriptome/skills/differential_expression.md
+    enabled: true
+
+tools:
+  - name: deseq2_analysis
+    handler: tools/deseq2_analysis/handler.py
+    schema: tools/deseq2_analysis/schema.json
+    timeout_seconds: 600
+
+defaults:
+  alpha: 0.05
+  lfc_threshold: 1.0

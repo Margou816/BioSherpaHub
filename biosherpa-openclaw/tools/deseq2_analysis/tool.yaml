@@ -1,0 +1,26 @@
+﻿name: deseq2_analysis
+version: "0.0.1"
+description: >
+  Run DESeq2 differential expression analysis on RNA-seq count data.
+  Produces result CSV, volcano plot, PCA plot, and MA plot.
+command_template: >
+  python {handler_path}
+    --counts-file {counts_file}
+    --metadata-file {metadata_file}
+    --design-formula "{design_formula}"
+    --contrast-variable {contrast_variable}
+    --treatment-group {treatment_group}
+    --control-group {control_group}
+    --output-dir {output_dir}
+    [--alpha {alpha}]
+    [--lfc-threshold {lfc_threshold}]
+schema_file: schema.json
+handler_file: handler.py
+script_file: scripts/deseq2.R
+timeout_seconds: 600
+outputs:
+  - deseq2_results.csv
+  - volcano.png
+  - pca.png
+  - ma.png
+  - summary.json

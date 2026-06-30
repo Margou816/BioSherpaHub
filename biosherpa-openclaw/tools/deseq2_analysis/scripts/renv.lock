@@ -1,0 +1,83 @@
+{
+  "R": {
+    "Version": "4.3.0",
+    "Repositories": [
+      {
+        "Name": "CRAN",
+        "URL": "https://cran.r-project.org"
+      },
+      {
+        "Name": "BioCsoft",
+        "URL": "https://bioconductor.org/packages/3.18/bioc"
+      }
+    ]
+  },
+  "Packages": {
+    "DESeq2": {
+      "Package": "DESeq2",
+      "Version": "1.42.0",
+      "Source": "Bioconductor",
+      "Hash": "placeholder",
+      "Requirements": [
+        "BiocGenerics",
+        "Biobase",
+        "S4Vectors",
+        "IRanges",
+        "GenomicRanges",
+        "SummarizedExperiment",
+        "ggplot2",
+        "locfit",
+        "geneplotter",
+        "Rcpp",
+        "RcppArmadillo"
+      ]
+    },
+    "EnhancedVolcano": {
+      "Package": "EnhancedVolcano",
+      "Version": "1.20.0",
+      "Source": "Bioconductor",
+      "Hash": "placeholder",
+      "Requirements": [
+        "ggplot2",
+        "ggrepel"
+      ]
+    },
+    "ggplot2": {
+      "Package": "ggplot2",
+      "Version": "3.5.1",
+      "Source": "CRAN",
+      "Hash": "placeholder",
+      "Requirements": []
+    },
+    "ggrepel": {
+      "Package": "ggrepel",
+      "Version": "0.9.5",
+      "Source": "CRAN",
+      "Hash": "placeholder",
+      "Requirements": [
+        "ggplot2"
+      ]
+    },
+    "optparse": {
+      "Package": "optparse",
+      "Version": "1.7.5",
+      "Source": "CRAN",
+      "Hash": "placeholder",
+      "Requirements": []
+    },
+    "jsonlite": {
+      "Package": "jsonlite",
+      "Version": "1.8.8",
+      "Source": "CRAN",
+      "Hash": "placeholder",
+      "Requirements": []
+    },
+    "renv": {
+      "Package": "renv",
+      "Version": "1.0.7",
+      "Source": "CRAN",
+      "Hash": "placeholder",
+      "Requirements": []
+    }
+  }
+}

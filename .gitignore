@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+venv/
+.venv/
+
+# R
+.Rproj.user/
+.Rhistory
+.RData
+renv/library/
+renv/staging/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Analysis output
+output/
+*.csv
+!examples/transcriptome/*.csv
+*.png
+*.json
+!tools/deseq2_analysis/scripts/renv.lock
+!tools/deseq2_analysis/schema.json
