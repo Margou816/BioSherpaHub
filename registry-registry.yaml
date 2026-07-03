@@ -1,0 +1,22 @@
+entries:
+  - id: transcriptome-v0.0.1
+    name: Transcriptome Analysis
+    description: DESeq2-based differential expression analysis for RNA-seq count data. Produces CSV results, volcano plot, PCA plot, and MA plot.
+    keywords:
+      - rna-seq
+      - rnaseq
+      - deseq2
+      - differential expression
+      - deg
+      - transcriptome
+      - volcano
+      - pca
+      - ma plot
+      - gene expression
+      - bulk rna
+    repository: https://github.com/Margou816/BioSherpaHub
+    version: 0.0.1
+    entry: agents.transcriptome.agent:TranscriptomeAgent
+metadata:
+  updated: "2026-07-03"
+  version: "0.1.0"

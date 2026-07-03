@@ -1,0 +1,13 @@
+name: BioSherpa Hub
+version: 0.1.0
+description: BioSherpa agents and analysis tools — platform-agnostic bioinformatics pipeline.
+entry: agents.transcriptome.agent:TranscriptomeAgent
+minimum_core_version: 0.1.0
+required_tools:
+  - deseq2_analysis
+keywords:
+  - rna-seq
+  - transcriptome
+  - deseq2
+  - differential expression
+domain: transcriptomics
