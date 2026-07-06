@@ -122,8 +122,10 @@ def execute_tool(tool_name: str, args: Dict[str, Any]) -> List[Dict[str, Any]]:
             outdir = Path(ws) / outdir
         args["output_dir"] = str(outdir)
         params_json = json.dumps(args)
+        # Extract agent name from entry field: "agents.transcriptome.agent:TranscriptomeAgent" -> "transcriptome"
+        agent_name = entry["entry"].split(".")[-2] if "." in entry.get("entry","") else entry["id"]
         cmd = [sys.executable, str(runner),
-               "--agent", entry["id"],
+               "--agent", agent_name,
                "--params", params_json]
         env = os.environ.copy()
         subprocess.run(cmd, capture_output=True,
