@@ -199,3 +199,38 @@ for f in files:
         p.write_bytes(base64.b64decode(f["d"]))
 print(f"Saved {{len(files)}} files to {{out}}")
 """
+
+
+def handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    rid = req.get("id"); method = req.get("method", "")
+    if method == "initialize":
+        return {"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "biosherpa-mcp", "version": "0.1.0"}}}
+    if method == "notifications/initialized":
+        return None
+    if method == "tools/list":
+        return {"jsonrpc": "2.0", "id": rid, "result": {"tools": build_tools()}}
+    if method == "tools/call":
+        p = req.get("params", {}); name = p.get("name", ""); args = p.get("arguments", {})
+        content = execute_tool(name, args)
+        return {"jsonrpc": "2.0", "id": rid, "result": {"content": content}}
+    return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"Unknown method: {method}"}}
+
+
+def main() -> None:
+    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            request = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        response = handle_request(request)
+        if response is not None:
+            sys.stdout.write(json.dumps(response) + "\n")
+            sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()
