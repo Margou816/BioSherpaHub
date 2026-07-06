@@ -155,20 +155,6 @@ def _load_skill(skill_name: str) -> List[Dict[str, Any]]:
         {"status":"no_match","summary":f"Package for '{skill_name}' not found"})}]
 
 
-def main() -> None:
-    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
-    for line in sys.stdin:
-        line = line.strip()
-        if not line: continue
-        try: request = json.loads(line)
-        except json.JSONDecodeError: continue
-        response = handle_request(request)
-        if response is not None:
-            sys.stdout.write(json.dumps(response) + "\n"); sys.stdout.flush()
-
-
-if __name__ == "__main__":
-    main()
 def _build_save_script(outdir: Path) -> str:
     """Build a self-contained Python script with embedded file contents.
 
