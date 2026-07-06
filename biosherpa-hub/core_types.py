@@ -1,4 +1,4 @@
-﻿"""BioSherpa Core Types — self-contained dataclass copies.
+﻿"""BioSherpa Core Types -- self-contained dataclass copies.
 
 Zero biosherpa_core dependency. Used by run_agent.py and all agents
 inside biosherpa-hub.
