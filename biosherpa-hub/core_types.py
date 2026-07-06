@@ -4,6 +4,7 @@ Zero biosherpa_core dependency. Used by run_agent.py and all agents
 inside biosherpa-hub.
 """
 from __future__ import annotations
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
@@ -83,3 +84,15 @@ class Result:
     @classmethod
     def failure(cls, errors: List[str]) -> "Result":
         return cls(status=ResultStatus.FAILED, errors=errors)
+class BaseAgent(ABC):
+    """Minimal agent contract for standalone biosherpa-hub agents."""
+    name: str = "base"; version: str = "0.0.0"; description: str = ""
+    @abstractmethod
+    def can_handle(self, request: "Request") -> bool: ...
+    @abstractmethod
+    def plan(self, request: "Request") -> "WorkflowPlan": ...
+    @abstractmethod
+    def execute(self, request: "Request", plan: "WorkflowPlan") -> "Result": ...
+    @abstractmethod
+    def summarize(self, result: "Result") -> str: ...
+
