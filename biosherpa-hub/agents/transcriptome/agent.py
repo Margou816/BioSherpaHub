@@ -1,4 +1,4 @@
-"""TranscriptomeAgent â€?DESeq2 differential expression via fixed pipeline."""
+"""TranscriptomeAgent DESeq2 differential expression via fixed pipeline."""
 from __future__ import annotations
 import json
 from pathlib import Path
