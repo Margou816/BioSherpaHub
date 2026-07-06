@@ -130,14 +130,8 @@ def execute_tool(tool_name: str, args: Dict[str, Any]) -> List[Dict[str, Any]]:
                                 timeout=AGENT_TIMEOUT, env=env,
                                 cwd=str(pkg))
         outdir = Path(args.get("output_dir", "biosherpa_output"))
-        ws = args.get("workspace", "")
-        if ws:
-            save_dir = Path(ws) / "biosherpa_output"
-            save_dir.mkdir(parents=True, exist_ok=True)
-            for f in outdir.iterdir():
-                if f.is_file():
-                    shutil.copy2(f, save_dir / f.name)
         items = collect_outputs(outdir)
+        items.append({"type": "text", "text": _build_save_script(outdir)})
         return items
     return [{"type":"text","text":json.dumps(
         {"status":"no_match","summary":"No agent found"})}]
@@ -175,3 +169,33 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+def _build_save_script(outdir: Path) -> str:
+    """Build a self-contained Python script with embedded file contents.
+
+    The script does NOT reference sandbox paths — all file data is
+    embedded directly. The LLM writes this to workspace via exec
+    and runs it to materialize output files on the host.
+    """
+    import base64
+    files = []
+    for f in sorted(outdir.iterdir()):
+        if not f.is_file(): continue
+        if f.suffix in (".csv", ".json"):
+            files.append({"n": f.name, "t": "text", "d": f.read_text(encoding="utf-8", errors="replace")})
+        elif f.suffix == ".png":
+            files.append({"n": f.name, "t": "png", "d": base64.b64encode(f.read_bytes()).decode("ascii")})
+    payload = json.dumps(files, ensure_ascii=False)
+    return f"""SAVE_SCRIPT (write to workspace as _save.py, then run: python _save.py)
+import base64, json, pathlib, os
+ws = os.environ.get("WORKSPACE", ".")
+out = pathlib.Path(ws) / "biosherpa_output"
+out.mkdir(parents=True, exist_ok=True)
+files = json.loads(r'''{payload}''')
+for f in files:
+    p = out / f["n"]
+    if f["t"] == "text":
+        p.write_text(f["d"], encoding="utf-8")
+    else:
+        p.write_bytes(base64.b64decode(f["d"]))
+print(f"Saved {{len(files)}} files to {{out}}")
+"""
