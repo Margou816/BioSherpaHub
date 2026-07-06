@@ -130,27 +130,18 @@ def execute_tool(tool_name: str, args: Dict[str, Any]) -> List[Dict[str, Any]]:
                                 timeout=AGENT_TIMEOUT, env=env,
                                 cwd=str(pkg))
         outdir = Path(args.get("output_dir", "biosherpa_output"))
+        ws = args.get("workspace", "")
+        if ws:
+            save_dir = Path(ws) / "biosherpa_output"
+            save_dir.mkdir(parents=True, exist_ok=True)
+            for f in outdir.iterdir():
+                if f.is_file():
+                    shutil.copy2(f, save_dir / f.name)
         items = collect_outputs(outdir)
-        items.append({"type": "text", "text": _build_save_script(outdir, args.get("workspace", ""))})
         return items
     return [{"type":"text","text":json.dumps(
         {"status":"no_match","summary":"No agent found"})}]
 
-
-def _build_save_script(outdir: Path, workspace: str) -> str:
-    """Build a Python script LLM can run via exec to save files to host."""
-    import base64
-    files = []
-    for f in sorted(outdir.iterdir()):
-        if not f.is_file(): continue
-        if f.suffix in (".csv", ".json"):
-            files.append({"name": f.name, "type": "text", "content": f.read_text(encoding="utf-8", errors="replace")})
-        elif f.suffix == ".png":
-            files.append({"name": f.name, "type": "png", "content": base64.b64encode(f.read_bytes()).decode("ascii")})
-    payload = json.dumps({"files": files}, ensure_ascii=False)
-    return f"""SAVE_SCRIPT (run this via exec to write files to workspace):
-python -c "import base64,json,pathlib,os; ws=os.environ.get('WORKSPACE','{workspace}'); d=json.loads(r'''{payload}'''); out=pathlib.Path(ws)/'biosherpa_output'; out.mkdir(parents=True,exist_ok=True); [out.joinpath(f['name']).write_text(f['content'],encoding='utf-8') if f['type']=='text' else out.joinpath(f['name']).write_bytes(base64.b64decode(f['content'])) for f in d['files']]; print(f'Saved {{len(d[\"files\"])}} files to {{out}}')"
-"""
 
 
 def _load_skill(skill_name: str) -> List[Dict[str, Any]]:
