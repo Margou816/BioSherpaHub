@@ -1,4 +1,4 @@
-﻿"""TranscriptomeAgent -- DESeq2 differential expression powered by BioSherpa Core.
+"""TranscriptomeAgent -- DESeq2 differential expression powered by BioSherpa Core.
 
 This agent implements the BaseAgent contract and delegates tool execution
 to the existing handler.py -> deseq2.R pipeline.
@@ -10,7 +10,8 @@ import json
 from pathlib import Path
 from typing import List
 
-from biosherpa_core import (
+# Standalone: using local core_types instead of biosherpa_core import
+from core_types import (
     BaseAgent,
     Request,
     Result,
@@ -31,7 +32,7 @@ _TRANSCRIPTOME_KEYWORDS = frozenset({
 })
 
 
-class TranscriptomeAgent(BaseAgent):
+class TranscriptomeAgent:
     """DESeq2-based transcriptome differential expression agent."""
 
     name: str = "transcriptome"

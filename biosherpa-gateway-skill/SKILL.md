@@ -1,67 +1,58 @@
 ---
-name: biosherpa-gateway
-description: BioSherpa bioinformatics agent hub. Use when the user requests RNA-seq, differential expression (DESeq2/edgeR/limma), enrichment (GO/KEGG/GSEA), PPI, single-cell (Seurat/CellChat/Monocle), spatial transcriptomics, or trajectory analysis. Routes to BioSherpa agents via GitHub Registry.
+name: biosherpa-mcp
+description: BioSherpa MCP Server — bioinformatics analysis via the Model Context Protocol. Use when the user requests RNA-seq, DESeq2, edgeR, limma, differential expression, GO, KEGG, GSEA, PPI, single-cell (Seurat, CellChat, Monocle), spatial transcriptomics, or trajectory analysis.
 user-invocable: true
 metadata:
   openclaw:
+    mcpServer:
+      command: python
+      args:
+        - "{baseDir}/scripts/mcp_server.py"
+      env:
+        R_LIBS_USER: C:/tmp/Rlib
     requires:
       bins:
         - python3
+        - Rscript
 ---
 
-# BioSherpa Gateway
+# BioSherpa MCP Server
 
-This skill routes bioinformatics requests to BioSherpa agents. Never generate bioinformatics code yourself — always route through this gateway.
+This skill provides bioinformatics analysis tools via the Model Context Protocol (MCP). The MCP server dynamically discovers available agents from the GitHub registry and exposes them as tools to OpenClaw.
 
-## Triggers
+## Supported Analysis
 
-RNA-seq | rnaseq | DESeq2 | edgeR | limma | differential expression | DEG | transcriptome | GO | KEGG | GSEA | enrichment | PPI | single-cell | scRNA-seq | Seurat | CellChat | Monocle | trajectory | spatial | marker gene | annotation | bulk RNA | gene expression
+- **Transcriptome:** DESeq2 differential expression, volcano plots, PCA, MA plots
+- **Enrichment:** GO, KEGG, GSEA (coming in next versions)
+- **PPI:** Protein interaction networks (coming)
+- **Single-cell:** Seurat, CellChat, Monocle (coming)
 
-## Workflow
+## How It Works
 
-1. Receive bioinformatics request from user
-2. Call the gateway script with the user's query and workspace
-3. If response `status` is `no_match`, tell the user the analysis type is not yet supported
-4. If `status` is `success`, present the `summary` and reference `artifact_details`
-5. If `status` is `error`, relay the error to the user
+1. OpenClaw starts the MCP server as a subprocess
+2. Server fetches available tools from the GitHub registry
+3. Server exposes tools via JSON-RPC (MCP protocol over stdio)
+4. When you call a tool, the server downloads the agent, runs the analysis, and returns results
+5. All analysis is done via fixed pipelines — never dynamically generated code
 
-## Usage
+## Configuration
 
-```bash
-python {baseDir}/scripts/main.py --query "THE USER'S REQUEST" --workspace "WORKSPACE_PATH"
-```
+OpenClaw auto-discovers the MCP server from the skill metadata. The server requires:
 
-### Optional flags
+- **python3** — for the MCP server and agent execution
+- **Rscript** — for DESeq2 analysis
+- **pyyaml** — for registry parsing (`pip install pyyaml`)
+- **R packages:** DESeq2, EnhancedVolcano, ggplot2 (in R_LIBS_USER)
 
-| Flag | Description |
-|---|---|
-| `--files f1.csv f2.csv` | Input data files |
-| `--registry-url URL` | Override registry URL |
-| `--r-libs /path/to/R/lib` | Override R library path |
-| `--timeout 600` | Timeout in seconds |
+## Tool Parameters
 
-## Response Format
-
-The gateway returns JSON:
-
-```json
-{
-  "status": "success|no_match|error",
-  "summary": "Human-readable result",
-  "artifacts": ["/path/to/file.csv", "/path/to/plot.png"],
-  "artifact_details": [
-    {"name": "deseq2_results.csv", "type": "TABLE", "path": "...", "description": "..."}
-  ],
-  "errors": [],
-  "workflow": ["deseq2_analysis"]
-}
-```
-
-## Under the Hood
-
-1. Searches BioSherpa GitHub Registry for matching agents
-2. Downloads agent package (cached locally)
-3. Loads and executes the agent in isolated context
-4. Collects results (tables, plots, summaries)
-5. Releases agent from memory — no persistent state
-6. Returns structured JSON to OpenClaw
+When OpenClaw calls a bioinformatics tool, provide:
+- `counts_file` — gene count matrix CSV (genes=rows, samples=columns)
+- `metadata_file` — sample metadata CSV
+- `design_formula` — e.g. `~condition`
+- `contrast_variable` — variable for contrast
+- `treatment_group` — treatment group label
+- `control_group` — control group label
+- `output_dir` — directory for results
+- `alpha` — padj cutoff (default 0.05)
+- `lfc_threshold` — log2FC cutoff (default 1.0)

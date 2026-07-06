@@ -1,4 +1,4 @@
-﻿"""DESeq2 tool runner -- wraps handler.py for the BioSherpa Core.
+"""DESeq2 tool runner -- wraps handler.py for the BioSherpa Core.
 
 Converts a Core Request into a handler.py CLI invocation,
 executes it, and returns a list of typed Artifacts.
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from biosherpa_core import Artifact, ArtifactType, Project
+from core_types import Artifact, ArtifactType, Project
 
 # Path to handler.py relative to this tool_runner
 _HANDLER_DIR = Path(__file__).resolve().parent.parent.parent / "tools" / "deseq2_analysis"
