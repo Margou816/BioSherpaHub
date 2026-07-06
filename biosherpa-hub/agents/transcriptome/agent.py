@@ -1,4 +1,4 @@
-"""TranscriptomeAgent â€” DESeq2 differential expression via fixed pipeline."""
+"""TranscriptomeAgent â€?DESeq2 differential expression via fixed pipeline."""
 from __future__ import annotations
 import json
 from pathlib import Path
@@ -7,7 +7,7 @@ from core_types import (
     BaseAgent, Request, Result, ResultStatus, WorkflowPlan,
     Artifact, ArtifactType,
 )
-from tool_runner import run_deseq2
+from .tool_runner import run_deseq2
 
 _TRANSCRIPTOME_KEYWORDS = frozenset({
     "rna", "rnaseq", "rna-seq", "transcriptome", "transcriptomics",
