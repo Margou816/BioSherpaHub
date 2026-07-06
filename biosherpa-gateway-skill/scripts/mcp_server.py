@@ -87,6 +87,7 @@ def build_tools() -> List[Dict[str, Any]]:
                 "treatment_group":{"type":"string","description":"Treatment group label"},
                 "control_group":{"type":"string","description":"Control group label"},
                 "output_dir":{"type":"string","description":"Output directory"},
+                "workspace":{"type":"string","description":"OpenClaw workspace directory — output files are saved here"},
                 "alpha":{"type":"number","description":"padj cutoff, default 0.05"},
                 "lfc_threshold":{"type":"number","description":"log2FC threshold, default 1.0"},
             },"required":["counts_file","metadata_file","design_formula","contrast_variable","treatment_group","control_group","output_dir"]},
@@ -114,19 +115,22 @@ def execute_tool(tool_name: str, args: Dict[str, Any]) -> List[Dict[str, Any]]:
             pkg = download_agent(entry["repository"], entry["id"], entry["version"])
         runner = find_run_agent(pkg)
         params_json = json.dumps(args)
+        # Resolve output_dir relative to workspace so files land on host
+        outdir = Path(args.get("output_dir", "biosherpa_output"))
+        ws = args.get("workspace", "")
+        if ws and not outdir.is_absolute():
+            outdir = Path(ws) / outdir
+        args["output_dir"] = str(outdir)
+        params_json = json.dumps(args)
         cmd = [sys.executable, str(runner),
                "--agent", entry["id"],
                "--params", params_json]
         env = os.environ.copy()
-        result = subprocess.run(cmd, capture_output=True,
+        subprocess.run(cmd, capture_output=True,
                                 timeout=AGENT_TIMEOUT, env=env,
                                 cwd=str(pkg))
-        stdout = result.stdout.decode("utf-8", errors="replace")
-        try:
-            parsed = json.loads(stdout)
-            return [{"type":"text","text":json.dumps(parsed, indent=2)}]
-        except json.JSONDecodeError:
-            return [{"type":"text","text":stdout}]
+        outdir = Path(args.get("output_dir", "biosherpa_output"))
+        return collect_outputs(outdir)
     return [{"type":"text","text":json.dumps(
         {"status":"no_match","summary":"No agent found"})}]
 
