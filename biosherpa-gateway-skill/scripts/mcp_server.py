@@ -87,7 +87,7 @@ def build_tools() -> List[Dict[str, Any]]:
                 "treatment_group":{"type":"string","description":"Treatment group label"},
                 "control_group":{"type":"string","description":"Control group label"},
                 "output_dir":{"type":"string","description":"Output directory"},
-                "workspace":{"type":"string","description":"OpenClaw workspace directory â€” output files are saved here"},
+                "workspace":{"type":"string","description":"OpenClaw workspace directory â€?output files are saved here"},
                 "alpha":{"type":"number","description":"padj cutoff, default 0.05"},
                 "lfc_threshold":{"type":"number","description":"log2FC threshold, default 1.0"},
             },"required":["counts_file","metadata_file","design_formula","contrast_variable","treatment_group","control_group","output_dir"]},
@@ -128,12 +128,9 @@ def execute_tool(tool_name: str, args: Dict[str, Any]) -> List[Dict[str, Any]]:
                "--agent", agent_name,
                "--params", params_json]
         env = os.environ.copy()
-        subprocess.run(cmd, capture_output=True,
+        result = subprocess.run(cmd, capture_output=True,
                                 timeout=AGENT_TIMEOUT, env=env,
-                                cwd=str(pkg))
-        outdir = Path(args.get("output_dir", "biosherpa_output"))
-        items = collect_outputs(outdir)
-        items.append({"type": "text", "text": _build_save_script(outdir)})
+                                cwd=str(pkg)); stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""; outdir = Path(args.get("output_dir", "biosherpa_output")); items = collect_outputs(outdir); if stderr: items.insert(0, {"type": "text", "text": f"=== DIAGNOSTIC (stderr) ===\n{stderr}"}); if result.returncode != 0: items.insert(0, {"type": "text", "text": f"Exit code: {result.returncode}"}); items.append({"type": "text", "text": _build_save_script(outdir)})
         return items
     return [{"type":"text","text":json.dumps(
         {"status":"no_match","summary":"No agent found"})}]
@@ -146,13 +143,11 @@ def _load_skill(skill_name: str) -> List[Dict[str, Any]]:
         return [{"type":"text","text":json.dumps(
             {"status":"no_match","summary":f"Skill '{skill_name}' not found"})}]
     for entry in fetch_registry():
-        pkg = get_cached(entry["id"], entry["version"])
-        if pkg is None:
-            pkg = download_agent(entry["repository"], entry["id"], entry["version"])
-        skill_path = pkg / builtin[skill_name]
-        if skill_path.exists():
-            return [{"type":"text","text":
-                skill_path.read_text(encoding="utf-8", errors="replace")}]
+        pkg = get_cached(entry["id"], entry["version"]) or download_agent(entry["repository"], entry["id"], entry["version"])
+        for rp, _, fs in os.walk(str(pkg)):
+            if builtin[skill_name] in fs:
+                sp = Path(rp) / builtin[skill_name]
+                return [{"type":"text","text": sp.read_text(encoding="utf-8", errors="replace")}]
     return [{"type":"text","text":json.dumps(
         {"status":"no_match","summary":f"Package for '{skill_name}' not found"})}]
 
@@ -160,7 +155,7 @@ def _load_skill(skill_name: str) -> List[Dict[str, Any]]:
 def _build_save_script(outdir: Path) -> str:
     """Build a self-contained Python script with embedded file contents.
 
-    The script does NOT reference sandbox paths â€” all file data is
+    The script does NOT reference sandbox paths â€?all file data is
     embedded directly. The LLM writes this to workspace via exec
     and runs it to materialize output files on the host.
     """
