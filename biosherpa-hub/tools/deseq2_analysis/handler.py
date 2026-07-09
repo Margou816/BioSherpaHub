@@ -1,4 +1,4 @@
-"""DESeq2 analysis handler -- thin dispatch layer.
+﻿"""DESeq2 analysis handler -- thin dispatch layer.
 
 Validates inputs, constructs the Rscript command, invokes the fixed R script,
 and collects output file paths. Contains no analysis logic.

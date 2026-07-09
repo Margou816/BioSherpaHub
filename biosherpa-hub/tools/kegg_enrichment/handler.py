@@ -1,4 +1,4 @@
-"""KEGG enrichment handler -- thin dispatch to kegg_enrichment.R."""
+﻿"""KEGG enrichment handler -- thin dispatch to kegg_enrichment.R."""
 from __future__ import annotations
 import argparse, subprocess, sys
 from pathlib import Path

@@ -1,4 +1,4 @@
-"""PubMedAgent -- literature search via NCBI E-utilities."""
+﻿"""PubMedAgent -- literature search via NCBI E-utilities."""
 from __future__ import annotations
 import json
 from typing import List

@@ -1,4 +1,4 @@
-"""PubMed tool runner -- NCBI E-utilities search."""
+﻿"""PubMed tool runner -- NCBI E-utilities search."""
 from __future__ import annotations
 import subprocess, sys, os
 from pathlib import Path

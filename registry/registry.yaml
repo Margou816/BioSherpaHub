@@ -17,21 +17,20 @@ entries:
     repository: https://github.com/Margou816/BioSherpaHub
     version: 0.0.1
     entry: agents.transcriptome.agent:TranscriptomeAgent
-metadata:
   - id: enrichment-v0.1.0
     name: Enrichment Analysis
-    description: GO (BP/MF/CC) and KEGG pathway enrichment analysis for DEGs using clusterProfiler.
+    description: GO (BP/MF/CC) and KEGG pathway enrichment analysis for DEGs using clusterProfiler with fixed R scripts.
     keywords: [go, kegg, enrichment, pathway, gene ontology, clusterprofiler, functional, annotation]
     repository: https://github.com/Margou816/BioSherpaHub
     version: 0.1.0
     entry: agents.enrichment.agent:EnrichmentAgent
   - id: pubmed-v0.1.0
     name: PubMed Literature Search
-    description: Search PubMed for articles related to genes or keywords via NCBI E-utilities.
+    description: Search PubMed for articles related to genes or keywords via NCBI E-utilities. No API key required.
     keywords: [pubmed, literature, articles, ncbi, reference, citation]
     repository: https://github.com/Margou816/BioSherpaHub
     version: 0.1.0
     entry: agents.pubmed.agent:PubMedAgent
 metadata:
-  updated: "2026-07-03"
+  updated: "2026-07-08"
   version: "0.1.0"

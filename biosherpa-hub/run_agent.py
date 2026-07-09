@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""run_agent.py — subprocess entry for MCP Server.
+﻿#!/usr/bin/env python
+"""run_agent.py -- subprocess entry for MCP Server.
 
 Called: python run_agent.py --agent transcriptome --params '{json}'
 
@@ -7,6 +7,7 @@ Zero biosherpa_core dependency. Uses local core_types.py.
 """
 from __future__ import annotations
 import argparse, json, sys, importlib
+import inspect
 from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
@@ -26,12 +27,20 @@ def main(argv=None):
     request = Request(query="", project=project, user_parameters=params)
     try:
         mod = importlib.import_module(f"agents.{args.agent}.agent")
-        cls = getattr(mod, "TranscriptomeAgent")
+        # Dynamically find the first BaseAgent subclass
+        cls = None
+        for name, obj in inspect.getmembers(mod, inspect.isclass):
+            if name.endswith("Agent") and name != "BaseAgent":
+                cls = obj; break
+        if cls is None:
+            raise ImportError(f"No *Agent class found in agents.{args.agent}.agent")
         agent = cls()
         plan = agent.plan(request)
         result = agent.execute(request, plan)
         result.summary = agent.summarize(result)
-        out = {"status":"success","summary":result.summary,"artifacts":[{"name":a.name,"type":a.artifact_type.name,"path":str(a.path),"description":a.description} for a in result.artifacts],"workflow":plan.tool_sequence}
+        artifacts = [{"name":a.name,"type":a.artifact_type.name,"path":str(a.path),"description":a.description} for a in result.artifacts]
+        status = "success" if result.status.name == "SUCCESS" else result.status.name.lower()
+        out = {"status":status,"summary":result.summary,"artifacts":artifacts,"workflow":plan.tool_sequence}
     except Exception as exc:
         out = {"status":"error","summary":str(exc),"artifacts":[],"errors":[str(exc)]}
     print(json.dumps(out, indent=2, default=str))

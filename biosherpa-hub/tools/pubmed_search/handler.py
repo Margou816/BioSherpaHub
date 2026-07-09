@@ -1,4 +1,4 @@
-"""PubMed search handler -- NCBI E-utilities (pure Python, no R)."""
+﻿"""PubMed search handler -- NCBI E-utilities (pure Python, no R)."""
 from __future__ import annotations
 import argparse, csv, sys, time, urllib.request, urllib.parse, xml.etree.ElementTree as ET
 from pathlib import Path

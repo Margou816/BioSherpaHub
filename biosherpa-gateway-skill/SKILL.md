@@ -1,6 +1,6 @@
----
+﻿---
 name: biosherpa-mcp
-description: BioSherpa MCP Server — bioinformatics analysis via the Model Context Protocol. Use when the user requests RNA-seq, DESeq2, edgeR, limma, differential expression, GO, KEGG, GSEA, PPI, single-cell (Seurat, CellChat, Monocle), spatial transcriptomics, or trajectory analysis.
+description: BioSherpa MCP Server 鈥?bioinformatics analysis via the Model Context Protocol. Use when the user requests RNA-seq, DESeq2, edgeR, limma, differential expression, GO, KEGG, GSEA, PPI, single-cell (Seurat, CellChat, Monocle), spatial transcriptomics, or trajectory analysis.
 user-invocable: true
 metadata:
   openclaw:
@@ -12,7 +12,7 @@ metadata:
         R_LIBS_USER: C:/tmp/Rlib
     requires:
       bins:
-        - python3
+        - python
         - Rscript
 ---
 
@@ -33,26 +33,26 @@ This skill provides bioinformatics analysis tools via the Model Context Protocol
 2. Server fetches available tools from the GitHub registry
 3. Server exposes tools via JSON-RPC (MCP protocol over stdio)
 4. When you call a tool, the server downloads the agent, runs the analysis, and returns results
-5. All analysis is done via fixed pipelines — never dynamically generated code
+5. All analysis is done via fixed pipelines 鈥?never dynamically generated code
 
 ## Configuration
 
 OpenClaw auto-discovers the MCP server from the skill metadata. The server requires:
 
-- **python3** — for the MCP server and agent execution
-- **Rscript** — for DESeq2 analysis
-- **pyyaml** — for registry parsing (`pip install pyyaml`)
+- **python** 鈥?for the MCP server and agent execution
+- **Rscript** 鈥?for DESeq2 analysis
+- **pyyaml** 鈥?for registry parsing (`pip install pyyaml`)
 - **R packages:** DESeq2, EnhancedVolcano, ggplot2 (in R_LIBS_USER)
 
 ## Tool Parameters
 
 When OpenClaw calls a bioinformatics tool, provide:
-- `counts_file` — gene count matrix CSV (genes=rows, samples=columns)
-- `metadata_file` — sample metadata CSV
-- `design_formula` — e.g. `~condition`
-- `contrast_variable` — variable for contrast
-- `treatment_group` — treatment group label
-- `control_group` — control group label
-- `output_dir` — directory for results
-- `alpha` — padj cutoff (default 0.05)
-- `lfc_threshold` — log2FC cutoff (default 1.0)
+- `counts_file` 鈥?gene count matrix CSV (genes=rows, samples=columns)
+- `metadata_file` 鈥?sample metadata CSV
+- `design_formula` 鈥?e.g. `~condition`
+- `contrast_variable` 鈥?variable for contrast
+- `treatment_group` 鈥?treatment group label
+- `control_group` 鈥?control group label
+- `output_dir` 鈥?directory for results
+- `alpha` 鈥?padj cutoff (default 0.05)
+- `lfc_threshold` 鈥?log2FC cutoff (default 1.0)

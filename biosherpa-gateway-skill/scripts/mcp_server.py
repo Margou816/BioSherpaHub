@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""BioSherpa MCP Server ï¿½ï¿½?Zero biosherpa_core dependency. JSON-RPC over stdio."""
+#!/usr/bin/env python
+"""BioSherpa MCP Server -- Zero biosherpa_core dependency. JSON-RPC over stdio."""
 from __future__ import annotations
 import json, sys, subprocess, io, os, zipfile, urllib.request, shutil
 from pathlib import Path
@@ -50,11 +50,15 @@ def find_run_agent(pkg: Path) -> Path:
 
 
 def collect_outputs(outdir: Path) -> List[Dict[str, Any]]:
-    """Read output files into MCP content items (not just paths).
+    """Return previews of output files as MCP content items.
 
-    CSV files are returned as text content; PNG files as base64-encoded
-    image content. This ensures results are visible even when the MCP
-    subprocess runs inside a sandbox that isolates the filesystem.
+    CSV: first 20 rows + total line count + file size + absolute path.
+    JSON: first 500 characters + file size + absolute path.
+    PNG: full base64 (small enough for inline display).
+    Other: absolute path + file size.
+
+    Full files are already on the host filesystem at the resolved
+    output_dir (which is inside the OpenClaw workspace).
     """
     import base64
     items: List[Dict[str, Any]] = []
@@ -62,17 +66,34 @@ def collect_outputs(outdir: Path) -> List[Dict[str, Any]]:
         if not f.is_file():
             continue
         if f.suffix == ".csv":
-            text = f.read_text(encoding="utf-8", errors="replace")
-            items.append({"type": "text", "text": f"=== {f.name} ===\n{text}"})
+            lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
+            total = len(lines)
+            preview = "\n".join(lines[:20])
+            suffix = f"\n... ({total - 20} more rows)" if total > 20 else ""
+            items.append({"type": "text", "text": (
+                f"=== {f.name} ({total} rows, {f.stat().st_size:,} bytes) ===\n"
+                f"[Full path: {f.resolve()}]\n{preview}{suffix}"
+            )})
         elif f.suffix == ".png":
             b64 = base64.b64encode(f.read_bytes()).decode("ascii")
-            items.append({"type": "image", "data": b64, "mimeType": "image/png"})
+            items.append({
+                "type": "image", "data": b64, "mimeType": "image/png",
+            })
         elif f.suffix == ".json":
             text = f.read_text(encoding="utf-8", errors="replace")
-            items.append({"type": "text", "text": f"=== {f.name} ===\n{text}"})
+            preview = text[:500]
+            suffix = "..." if len(text) > 500 else ""
+            items.append({"type": "text", "text": (
+                f"=== {f.name} ({f.stat().st_size:,} bytes) ===\n"
+                f"[Full path: {f.resolve()}]\n{preview}{suffix}"
+            )})
         else:
-            items.append({"type": "text", "text": f"Output: {f.name} ({f.stat().st_size} bytes)"})
+            items.append({"type": "text", "text": (
+                f"Output: {f.name} ({f.stat().st_size:,} bytes) "
+                f"-> {f.resolve()}"
+            )})
     return items
+
 def build_tools() -> List[Dict[str, Any]]:
     tools = []
     for entry in fetch_registry():
@@ -87,7 +108,7 @@ def build_tools() -> List[Dict[str, Any]]:
                 "treatment_group":{"type":"string","description":"Treatment group label"},
                 "control_group":{"type":"string","description":"Control group label"},
                 "output_dir":{"type":"string","description":"Output directory"},
-                "workspace":{"type":"string","description":"OpenClaw workspace directory â€?output files are saved here"},
+                "workspace":{"type":"string","description":"OpenClaw workspace directory -- output files are saved here"},
                 "alpha":{"type":"number","description":"padj cutoff, default 0.05"},
                 "lfc_threshold":{"type":"number","description":"log2FC threshold, default 1.0"},
             },"required":["counts_file","metadata_file","design_formula","contrast_variable","treatment_group","control_group","output_dir"]},
@@ -130,11 +151,18 @@ def execute_tool(tool_name: str, args: Dict[str, Any]) -> List[Dict[str, Any]]:
         env = os.environ.copy()
         result = subprocess.run(cmd, capture_output=True,
                                 timeout=AGENT_TIMEOUT, env=env,
-                                cwd=str(pkg)); stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""; outdir = Path(args.get("output_dir", "biosherpa_output")); items = collect_outputs(outdir); if stderr: items.insert(0, {"type": "text", "text": f"=== DIAGNOSTIC (stderr) ===\n{stderr}"}); if result.returncode != 0: items.insert(0, {"type": "text", "text": f"Exit code: {result.returncode}"}); items.append({"type": "text", "text": _build_save_script(outdir)})
+                                cwd=str(pkg))
+        stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        outdir = Path(args.get("output_dir", "biosherpa_output"))
+        items = collect_outputs(outdir)
+        if stderr:
+            items.insert(0, {"type": "text", "text": f"=== DIAGNOSTIC (stderr) ===\n{stderr}"})
+        if result.returncode != 0:
+            items.insert(0, {"type": "text", "text": f"Exit code: {result.returncode}"})
+        items.append({"type": "text", "text": _location_summary(outdir)})
         return items
     return [{"type":"text","text":json.dumps(
         {"status":"no_match","summary":"No agent found"})}]
-
 
 
 def _load_skill(skill_name: str) -> List[Dict[str, Any]]:
@@ -152,36 +180,17 @@ def _load_skill(skill_name: str) -> List[Dict[str, Any]]:
         {"status":"no_match","summary":f"Package for '{skill_name}' not found"})}]
 
 
-def _build_save_script(outdir: Path) -> str:
-    """Build a self-contained Python script with embedded file contents.
-
-    The script does NOT reference sandbox paths â€?all file data is
-    embedded directly. The LLM writes this to workspace via exec
-    and runs it to materialize output files on the host.
+def _location_summary(outdir: Path) -> str:
+    """Return a human-readable summary of where output files are saved.
+    Files are already written to the host workspace by the agent subprocess.
     """
-    import base64
-    files = []
-    for f in sorted(outdir.iterdir()):
-        if not f.is_file(): continue
-        if f.suffix in (".csv", ".json"):
-            files.append({"n": f.name, "t": "text", "d": f.read_text(encoding="utf-8", errors="replace")})
-        elif f.suffix == ".png":
-            files.append({"n": f.name, "t": "png", "d": base64.b64encode(f.read_bytes()).decode("ascii")})
-    payload = json.dumps(files, ensure_ascii=False)
-    return f"""SAVE_SCRIPT (write to workspace as _save.py, then run: python _save.py)
-import base64, json, pathlib, os
-ws = os.environ.get("WORKSPACE", ".")
-out = pathlib.Path(ws) / "biosherpa_output"
-out.mkdir(parents=True, exist_ok=True)
-files = json.loads(r'''{payload}''')
-for f in files:
-    p = out / f["n"]
-    if f["t"] == "text":
-        p.write_text(f["d"], encoding="utf-8")
-    else:
-        p.write_bytes(base64.b64decode(f["d"]))
-print(f"Saved {{len(files)}} files to {{out}}")
-"""
+    files = sorted(f for f in outdir.iterdir() if f.is_file())
+    if not files:
+        return f"[BioSherpa] No output files found in {outdir.resolve()}"
+    lines = [f"[BioSherpa] {len(files)} output file(s) saved to {outdir.resolve()}:"]
+    for f in files:
+        lines.append(f"  - {f.name} ({f.stat().st_size:,} bytes)")
+    return "\n".join(lines)
 
 
 def handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:

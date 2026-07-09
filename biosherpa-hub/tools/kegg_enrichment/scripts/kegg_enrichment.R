@@ -3,8 +3,12 @@ suppressPackageStartupMessages({library(clusterProfiler);library(optparse)})
 option_list=list(make_option("--deg-file",type="character"),make_option("--organism",type="character",default="hsa"),make_option("--output-dir",type="character"),make_option("--pvalue-cutoff",type="double",default=0.05),make_option("--qvalue-cutoff",type="double",default=0.2))
 opts=parse_args(OptionParser(option_list=option_list))
 deg=read.csv(opts[["deg-file"]],stringsAsFactors=FALSE)
+suppressPackageStartupMessages(library(org.Hs.eg.db))
 sig=deg[deg$padj<opts[["pvalue-cutoff"]]&abs(deg$log2FoldChange)>0.5,]
-genes=as.character(sig[[1]])
+gene_symbols=as.character(sig[[1]])
+suppressPackageStartupMessages(library(clusterProfiler))
+entrez_ids=bitr(gene_symbols,fromType="SYMBOL",toType="ENTREZID",OrgDb=org.Hs.eg.db)
+genes=unique(entrez_ids$ENTREZID)
 if(length(genes)<5){cat("Too few significant genes for KEGG\n");quit(status=0)}
 suppressPackageStartupMessages(library(enrichplot))
 if(opts$organism=="org.Hs.eg.db"){library(org.Hs.eg.db)}

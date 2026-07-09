@@ -8,9 +8,9 @@ sig=deg[deg$padj<opts[["pvalue-cutoff"]]&abs(deg$log2FoldChange)>0.5,]
 genes=as.character(sig[[1]])
 if(length(genes)<5){cat("Too few significant genes\n");quit(status=0)}
 suppressPackageStartupMessages(library(enrichplot))
-ego_bp=enrichGO(gene=genes,OrgDb=get(opts$organism),ont="BP",pvalueCutoff=opts[["pvalue-cutoff"]],qvalueCutoff=opts[["qvalue-cutoff"]])
-ego_mf=enrichGO(gene=genes,OrgDb=get(opts$organism),ont="MF",pvalueCutoff=opts[["pvalue-cutoff"]],qvalueCutoff=opts[["qvalue-cutoff"]])
-ego_cc=enrichGO(gene=genes,OrgDb=get(opts$organism),ont="CC",pvalueCutoff=opts[["pvalue-cutoff"]],qvalueCutoff=opts[["qvalue-cutoff"]])
+ego_bp=enrichGO(gene=genes,OrgDb=get(opts$organism),ont="BP",keyType="SYMBOL",pvalueCutoff=opts[["pvalue-cutoff"]],qvalueCutoff=opts[["qvalue-cutoff"]])
+ego_mf=enrichGO(gene=genes,OrgDb=get(opts$organism),ont="MF",keyType="SYMBOL",pvalueCutoff=opts[["pvalue-cutoff"]],qvalueCutoff=opts[["qvalue-cutoff"]])
+ego_cc=enrichGO(gene=genes,OrgDb=get(opts$organism),ont="CC",keyType="SYMBOL",pvalueCutoff=opts[["pvalue-cutoff"]],qvalueCutoff=opts[["qvalue-cutoff"]])
 dir.create(opts[["output-dir"]],showWarnings=FALSE,recursive=TRUE)
 out=opts[["output-dir"]]
 write.csv(as.data.frame(ego_bp),file.path(out,"go_enrichment_bp.csv"),row.names=FALSE)
