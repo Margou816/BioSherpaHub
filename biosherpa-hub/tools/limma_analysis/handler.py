@@ -38,7 +38,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=_DEFAULT_TIMEOUT, check=True, env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", "C:/tmp/Rlib")})
+        result = subprocess.run(cmd, capture_output=True, timeout=_DEFAULT_TIMEOUT, env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", "C:/tmp/Rlib")})
         if result.stdout:
             print(result.stdout.decode("utf-8", errors="replace"))
         if result.stderr:

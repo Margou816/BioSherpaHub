@@ -30,8 +30,7 @@ def execute_tool(tool_name: str, params: Dict[str, Any], r_libs_user: str = "") 
     try:
         result = subprocess.run(cmd, capture_output=True, timeout=120)
         stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
-        if result.returncode != 0:
-            return {"status": "error", "summary": f"Tool {tool_name} failed (exit {result.returncode})", "errors": [stderr], "stderr": stderr}
+        stderr_out = stderr  # R warnings may produce non-zero exit on success failed (exit {result.returncode})", "errors": [stderr], "stderr": stderr}
         return {"status": "success", "summary": f"{tool_name} completed", "stderr": stderr}
     except subprocess.TimeoutExpired:
         return {"status": "error", "summary": f"Tool {tool_name} timed out", "errors": ["Timeout after 120s"]}

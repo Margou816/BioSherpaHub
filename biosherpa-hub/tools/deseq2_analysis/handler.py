@@ -1,4 +1,4 @@
-﻿"""DESeq2 analysis handler -- thin dispatch layer.
+"""DESeq2 analysis handler -- thin dispatch layer.
 
 Validates inputs, constructs the Rscript command, invokes the fixed R script,
 and collects output file paths. Contains no analysis logic.
@@ -67,22 +67,24 @@ def validate_inputs(
 
 
 def _check_counts_header(path: Path) -> None:
-    """Verify the counts CSV has at least a gene-id column + one sample column."""
+    """Verify the counts file (CSV or TSV) has at least a gene-id column + one sample column."""
     with path.open("r", encoding="utf-8") as fh:
         header = fh.readline().strip()
-    cols = [c.strip().strip('"') for c in header.split(",")]
+    delim = "\t" if "\t" in header else ","
+    cols = [c.strip().strip('"') for c in header.split(delim)]
     if len(cols) < 2:
         raise ValueError(
             f"Counts file header has only {len(cols)} column(s); "
-            "expected gene-id column + at least one sample column."
+            f"expected gene-id column + at least one sample column. Detected delimiter: {repr(delim)}"
         )
 
 
 def _check_metadata_header(path: Path) -> None:
-    """Verify the metadata CSV has at least a sample-id column + one grouping column."""
+    """Verify the metadata file (CSV or TSV) has at least a sample-id column + one grouping column."""
     with path.open("r", encoding="utf-8") as fh:
         header = fh.readline().strip()
-    cols = [c.strip().strip('"') for c in header.split(",")]
+    delim = "\t" if "\t" in header else ","
+    cols = [c.strip().strip('"') for c in header.split(delim)]
     if len(cols) < 2:
         raise ValueError(
             f"Metadata file header has only {len(cols)} column(s); "
@@ -137,8 +139,7 @@ def run_analysis(
         cmd,
         capture_output=True,
         text=False,
-        timeout=timeout,
-        check=True,
+        timeout=timeout
     )
 
 

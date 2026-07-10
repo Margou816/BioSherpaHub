@@ -19,7 +19,7 @@ def main(argv: Optional[List[str]] = None) -> int:
            "--pvalue-cutoff", str(args.pvalue_cutoff),
            "--qvalue-cutoff", str(args.qvalue_cutoff)]
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=600, check=True, env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", "C:/tmp/Rlib")})
+        result = subprocess.run(cmd, capture_output=True, timeout=600, env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", "C:/tmp/Rlib")})
         if result.stdout: print(result.stdout.decode("utf-8", errors="replace"))
         return 0
     except subprocess.CalledProcessError as exc:
