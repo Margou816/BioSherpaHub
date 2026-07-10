@@ -1,4 +1,6 @@
 #!/usr/bin/env Rscript
+.libPaths(c(Sys.getenv('R_LIBS_USER'), .libPaths()))
+
 suppressPackageStartupMessages({library(clusterProfiler);library(optparse)})
 option_list=list(make_option("--deg-file",type="character"),make_option("--organism",type="character",default="hsa"),make_option("--output-dir",type="character"),make_option("--pvalue-cutoff",type="double",default=0.05),make_option("--qvalue-cutoff",type="double",default=0.2))
 opts=parse_args(OptionParser(option_list=option_list))

@@ -1,1 +1,1 @@
-﻿"""BioSherpa agents for OpenClaw."""
+"""BioSherpa agents package."""

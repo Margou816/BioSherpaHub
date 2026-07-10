@@ -1,28 +1,48 @@
-﻿# GO Enrichment Skill
+---
+id: go
+name: GO Enrichment
+tool: go_enrichment
+description: Gene Ontology (BP/MF/CC) enrichment via clusterProfiler
+---
 
-## Input: DEG list from DESeq2 output CSV or gene symbol list
+# GO Enrichment Analysis
+
+Functional enrichment against Gene Ontology databases.
+
+## Input
+
+- DEG list from DESeq2 output CSV or a plain gene symbol list file (one per line)
+- The R script reads the first column as gene symbols
 
 ## Parameters
-- pvalue_cutoff: 0.05 standard, 0.01 strict
-- qvalue_cutoff: 0.2 standard (clusterProfiler default)
-- organism: org.Hs.eg.db (human), org.Mm.eg.db (mouse)
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| deg_file | path | (required) | DEG result CSV or gene list file |
+| organism | string | org.Hs.eg.db | OrgDb package: org.Hs.eg.db (human), org.Mm.eg.db (mouse) |
+| pvalue_cutoff | float | 0.05 | P-value cutoff for enrichment |
+| qvalue_cutoff | float | 0.2 | Q-value cutoff (clusterProfiler default) |
+| output_dir | path | biosherpa_output | Output directory |
 
 ## Ontologies
-- BP: Biological Process
-- MF: Molecular Function
-- CC: Cellular Component
 
-## Outputs
-- go_enrichment_bp.csv, go_enrichment_mf.csv, go_enrichment_cc.csv
-- go_barplot.png, go_dotplot.png
+- BP: Biological Process -- what the genes *do*
+- MF: Molecular Function -- what the gene products *bind/act on*
+- CC: Cellular Component -- where the gene products are *located*
+
+## Output Files
+
+- `go_enrichment_bp.csv`, `go_enrichment_mf.csv`, `go_enrichment_cc.csv`
+- `go_barplot.png`, `go_dotplot.png`
 
 ## Interpretation
-- GeneRatio: proportion of DEGs annotated to the GO term
-- Count: number of DEGs in the term
+
+- GeneRatio: proportion of your DEGs annotated to the term
 - padj: Benjamini-Hochberg adjusted p-value
-- Bar plot shows top enriched terms by count
+- Bar plot: top enriched terms by gene count
 
 ## Common Issues
-- Fewer than 5 significant genes blocks enrichment
+
+- Fewer than 5 significant DEGs may produce no enrichment
 - Gene symbol conversion rate depends on OrgDb coverage
-- Verify organism database matches your species
+- Always confirm the organism database matches your species

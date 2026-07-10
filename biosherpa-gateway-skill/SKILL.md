@@ -1,6 +1,6 @@
-﻿---
+---
 name: biosherpa-mcp
-description: BioSherpa MCP Server 鈥?bioinformatics analysis via the Model Context Protocol. Use when the user requests RNA-seq, DESeq2, edgeR, limma, differential expression, GO, KEGG, GSEA, PPI, single-cell (Seurat, CellChat, Monocle), spatial transcriptomics, or trajectory analysis.
+description: BioSherpa -- bioinformatics analysis platform using the Model Context Protocol. Use when the user requests RNA-seq, deseq2, limma, differential expression, GO, KEGG, GSEA, PPI, single-cell (Seurat, CellChat, Monocle), spatial transcriptomics, pathway enrichment, PubMed literature search, or any bioinformatics analysis. Supports three-level navigation: find an agent -> load a skill -> run a tool.
 user-invocable: true
 metadata:
   openclaw:
@@ -18,41 +18,32 @@ metadata:
 
 # BioSherpa MCP Server
 
-This skill provides bioinformatics analysis tools via the Model Context Protocol (MCP). The MCP server dynamically discovers available agents from the GitHub registry and exposes them as tools to OpenClaw.
+Bioinformatics analysis platform with a three-level Agent-Skill-Tool architecture.
 
-## Supported Analysis
+## Architecture
 
-- **Transcriptome:** DESeq2 differential expression, volcano plots, PCA, MA plots
-- **Enrichment:** GO, KEGG, GSEA (coming in next versions)
-- **PPI:** Protein interaction networks (coming)
-- **Single-cell:** Seurat, CellChat, Monocle (coming)
+- **Agent** -- Bioinformatics engineer persona. Guides the conversation, clarifies your intent, and chooses the right analysis method based on your data type.
+- **Skill** -- Domain-specific module. Provides detailed parameter guidance, file format requirements, thresholds, and tells you which tool to call.
+- **Tool** -- Fixed R or Python pipeline. Executes the actual analysis and returns results.
 
 ## How It Works
 
-1. OpenClaw starts the MCP server as a subprocess
-2. Server fetches available tools from the GitHub registry
-3. Server exposes tools via JSON-RPC (MCP protocol over stdio)
-4. When you call a tool, the server downloads the agent, runs the analysis, and returns results
-5. All analysis is done via fixed pipelines 鈥?never dynamically generated code
+1. OpenClaw starts the MCP server
+2. Server fetches available agents from the GitHub registry
+3. Call `find_biosherpa_agent` with keywords describing your analysis need
+4. The agent persona helps you clarify requirements
+5. Call `load_biosherpa_skill` to get parameter guidance for a specific method
+6. Call `run_biosherpa_tool` with the parameters to execute the analysis
+7. Results are saved to your workspace
+
+## Available Agents
+
+| Agent | Description | Skills          |
+| transcriptome | Bulk RNA-seq / microarray differential expression | deseq2, limma     || pubmed | PubMed literature search | pubmed |
 
 ## Configuration
 
-OpenClaw auto-discovers the MCP server from the skill metadata. The server requires:
-
-- **python** 鈥?for the MCP server and agent execution
-- **Rscript** 鈥?for DESeq2 analysis
-- **pyyaml** 鈥?for registry parsing (`pip install pyyaml`)
-- **R packages:** DESeq2, EnhancedVolcano, ggplot2 (in R_LIBS_USER)
-
-## Tool Parameters
-
-When OpenClaw calls a bioinformatics tool, provide:
-- `counts_file` 鈥?gene count matrix CSV (genes=rows, samples=columns)
-- `metadata_file` 鈥?sample metadata CSV
-- `design_formula` 鈥?e.g. `~condition`
-- `contrast_variable` 鈥?variable for contrast
-- `treatment_group` 鈥?treatment group label
-- `control_group` 鈥?control group label
-- `output_dir` 鈥?directory for results
-- `alpha` 鈥?padj cutoff (default 0.05)
-- `lfc_threshold` 鈥?log2FC cutoff (default 1.0)
+- **python** -- for the MCP server and agent execution
+- **Rscript** -- for R-based analysis tools
+- **pyyaml** -- for registry parsing (`pip install pyyaml`)
+- **R packages** -- DESeq2, EnhancedVolcano, ggplot2, clusterProfiler, org.Hs.eg.db, enrichplot, optparse (in R_LIBS_USER)

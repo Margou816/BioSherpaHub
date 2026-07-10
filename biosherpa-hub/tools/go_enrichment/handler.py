@@ -1,6 +1,6 @@
-﻿"""GO enrichment handler -- thin dispatch to go_enrichment.R."""
+"""GO enrichment handler -- thin dispatch to go_enrichment.R."""
 from __future__ import annotations
-import argparse, subprocess, sys
+import argparse, subprocess, sys, os
 from pathlib import Path
 from typing import List, Optional
 
@@ -22,7 +22,7 @@ def main(argv: Optional[List[str]] = None) -> int:
            "--pvalue-cutoff", str(args.pvalue_cutoff),
            "--qvalue-cutoff", str(args.qvalue_cutoff)]
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=_DEFAULT_TIMEOUT, check=True)
+        result = subprocess.run(cmd, capture_output=True, timeout=_DEFAULT_TIMEOUT, check=True, env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", "C:/tmp/Rlib")})
         if result.stdout: print(result.stdout.decode("utf-8", errors="replace"))
         if result.stderr: print(result.stderr.decode("utf-8", errors="replace"), file=sys.stderr)
         return 0

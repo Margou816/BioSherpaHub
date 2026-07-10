@@ -1,63 +1,60 @@
 ---
 id: deseq2
-name: DESeq2 Skill
-description: DESeq2 parameter guidance, input validation rules, and result interpretation for differential expression analysis
+name: DESeq2 Differential Expression
+tool: deseq2_analysis
+description: DESeq2-based differential expression for RNA-seq raw count data
 ---
-# DESeq2 Skill — Pipeline Guardian Playbook
 
-This skill is loaded on-demand when detailed DESeq2 guidance is needed.
-It does NOT run analysis — that is the agent's job.
+# DESeq2 Differential Expression
+
+Use this skill for RNA-seq data with **raw integer count matrices**.
+
+## When to Use DESeq2 (vs other methods)
+
+- RNA-seq data with >=3 biological replicates per group: **USE DESeq2**
+- RNA-seq with 2 replicates: consider edgeR instead
+- Microarray or already-normalized data: use limma instead
+- Single-cell RNA-seq: requires a different agent entirely
 
 ## Input Format Requirements
 
 ### Counts File
+- Format: CSV (comma-separated)
 - Rows: genes (gene ID in first column)
-- Columns: samples
-- Values: **raw integer counts** — NOT TPM, FPKM, or normalized data
+- Columns: samples (matching metadata)
+- Values: **raw integer counts** -- NOT TPM, FPKM, RPKM, or normalized data
 - DESeq2 performs its own normalization (median-of-ratios)
 
 ### Metadata File
-- One row per sample, matching count matrix column names
+- Format: CSV (comma-separated)
+- One row per sample, must match count matrix column names exactly
 - Must include the grouping variable(s) used in the design formula
-- Example: sample,condition,batch
+- Example header: `sample,condition,batch`
 
-## Parameter Selection
+## Parameters
 
-### Design Formula
-- Simple two-group: ~condition
-- With batch: ~batch + condition
-- Variable of interest LAST for default results extraction
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| counts_file | path | (required) | Raw gene count matrix CSV |
+| metadata_file | path | (required) | Sample metadata CSV |
+| design_formula | string | ~condition | R formula, variable of interest LAST |
+| contrast_variable | string | condition | Variable name for the contrast |
+| treatment_group | string | (required) | Treatment/experimental group label |
+| control_group | string | (required) | Control/reference group label |
+| alpha | float | 0.05 | Adjusted p-value cutoff (0.01 stricter, 0.1 exploratory) |
+| lfc_threshold | float | 1.0 | Absolute log2 fold-change (1.0=2-fold, 0.585=1.5-fold) |
+| output_dir | path | biosherpa_output | Where to save results |
 
-### Alpha
-- 0.05 standard. 0.01 stricter. 0.1 exploratory.
+## Design Formula Guidelines
 
-### LFC Threshold
-- 1.0 = 2-fold (standard)
-- 0.585 = ~1.5-fold (sensitive)
-- 2.0 = 4-fold (stringent)
+- Simple two-group: `~condition`
+- With batch effect: `~batch + condition`
+- **Variable of interest goes LAST** (DESeq2 defaults to the last variable for results)
 
-## Output Interpretation
+## Output Files
 
-### CSV: deseq2_results.csv
-- baseMean: mean normalized count
-- log2FoldChange: positive = higher in treatment
-- padj: Benjamini-Hochberg FDR
-
-### Volcano Plot
-- X: log2FC, Y: -log10(padj)
-- Red = significantly up, Blue = significantly down
-
-### PCA Plot
-- Shows sample clustering by treatment
-- Good quality = distinct group separation
-
-### MA Plot
-- X: mean expression, Y: log2FC
-- Should be symmetric around y=0
-
-## Common Mistakes
-
-1. Using TPM/FPKM instead of raw counts → DESeq2 normalization is wrong
-2. Sample name mismatch between counts and metadata → analysis fails
-3. Design formula ordering: variable of interest should be last
-4. Insufficient replicates: minimum 2-3 per group recommended
+- `deseq2_results.csv` -- Full results: baseMean, log2FoldChange, lfcSE, stat, pvalue, padj
+- `volcano.png` -- EnhancedVolcano plot (red=up, blue=down)
+- `pca.png` -- PCA sample clustering
+- `ma.png` -- MA plot (mean expression vs log2FC)
+- `summary.json` -- Up/down gene counts

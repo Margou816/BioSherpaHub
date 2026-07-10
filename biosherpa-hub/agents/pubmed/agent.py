@@ -1,42 +1,39 @@
-﻿"""PubMedAgent -- literature search via NCBI E-utilities."""
+"""PubMed agent -- thin tool dispatcher (pure Python, no R)."""
 from __future__ import annotations
-import json
-from typing import List
-from core_types import (
-    BaseAgent, Request, Result, ResultStatus, WorkflowPlan,
-    Artifact, ArtifactType,
-)
-from .tool_runner import run_pubmed_search
-_KW = frozenset({"pubmed","literature","articles","ncbi","reference","citation","paper","journal"})
-class PubMedAgent(BaseAgent):
-    name="pubmed"; version="0.1.0"; description="PubMed literature search"
-    def can_handle(self, request: Request) -> bool:
-        return any(kw in request.query.lower() for kw in _KW)
-    def plan(self, request: Request) -> WorkflowPlan:
-        wf = WorkflowPlan(name="PubMed Search")
-        wf.add_step(tool="pubmed_search", params={
-            "query": request.user_parameters.get("query", request.query),
-            "max_results": request.user_parameters.get("max_results", 20),
-            "output_dir": request.user_parameters.get("output_dir", "."),
-        }, description="PubMed literature search")
-        return wf
-    def execute(self, request: Request, plan: WorkflowPlan) -> Result:
-        artifacts: List[Artifact] = []
-        errors: List[str] = []
-        for step in plan.steps:
-            if step.tool != "pubmed_search":
-                errors.append(f"Unknown: {step.tool}"); continue
-            try:
-                step_artifacts = run_pubmed_search(params=step.params)
-                artifacts.extend(step_artifacts)
-            except Exception as exc:
-                errors.append(f"PubMed search failed: {exc}")
-        if errors and not artifacts: return Result.failure(errors=errors)
-        return Result.success(artifacts=artifacts, summary=self.summarize(Result(artifacts=artifacts, status=ResultStatus.SUCCESS)))
-    def summarize(self, result: Result) -> str:
-        if not result.artifacts: return "No PubMed results."
-        parts = ["## PubMed Search Results\n"]
-        for a in result.artifacts:
-            if a.artifact_type == ArtifactType.TABLE and a.path:
-                parts.append(f"Results: `{a.path}`")
-        return "\n".join(parts)
+import subprocess, sys, os
+from pathlib import Path
+from typing import Dict, Any
+
+_HERE = Path(__file__).resolve().parent.parent.parent
+
+TOOLS: Dict[str, Path] = {
+    "pubmed_search": _HERE / "tools" / "pubmed_search" / "handler.py",
+}
+
+_PARAM_MAP: Dict[str, Dict[str, str]] = {
+    "pubmed_search": {
+        "query": "--query", "max_results": "--max-results", "output_dir": "--output-dir",
+    },
+}
+
+def execute_tool(tool_name: str, params: Dict[str, Any], r_libs_user: str = "") -> Dict[str, Any]:
+    if tool_name not in TOOLS:
+        return {"status": "error", "summary": f"Unknown tool: {tool_name}", "errors": [f"Tool '{tool_name}' not in pubmed agent"]}
+    handler = TOOLS[tool_name]
+    mapping = _PARAM_MAP.get(tool_name, {})
+    cmd = [sys.executable, str(handler)]
+    for key, flag in mapping.items():
+        if key in params and params[key] != "":
+            cmd.extend([flag, str(params[key])])
+    outdir = params.get("output_dir", "biosherpa_output")
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=120)
+        stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        if result.returncode != 0:
+            return {"status": "error", "summary": f"Tool {tool_name} failed (exit {result.returncode})", "errors": [stderr], "stderr": stderr}
+        return {"status": "success", "summary": f"{tool_name} completed", "stderr": stderr}
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "summary": f"Tool {tool_name} timed out", "errors": ["Timeout after 120s"]}
+    except Exception as exc:
+        return {"status": "error", "summary": str(exc), "errors": [str(exc)]}

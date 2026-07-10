@@ -1,6 +1,6 @@
-﻿"""KEGG enrichment handler -- thin dispatch to kegg_enrichment.R."""
+"""KEGG enrichment handler -- thin dispatch to kegg_enrichment.R."""
 from __future__ import annotations
-import argparse, subprocess, sys
+import argparse, subprocess, sys, os
 from pathlib import Path
 from typing import List, Optional
 _SCRIPT_DIR = Path(__file__).resolve().parent
@@ -19,7 +19,7 @@ def main(argv: Optional[List[str]] = None) -> int:
            "--pvalue-cutoff", str(args.pvalue_cutoff),
            "--qvalue-cutoff", str(args.qvalue_cutoff)]
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=600, check=True)
+        result = subprocess.run(cmd, capture_output=True, timeout=600, check=True, env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", "C:/tmp/Rlib")})
         if result.stdout: print(result.stdout.decode("utf-8", errors="replace"))
         return 0
     except subprocess.CalledProcessError as exc:

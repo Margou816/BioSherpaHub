@@ -1,36 +1,72 @@
+# BioSherpa Agent Registry
+# Add new agents here -- no code changes needed in mcp_server.py
 entries:
-  - id: transcriptome-v0.0.1
-    name: Transcriptome Analysis
-    description: DESeq2-based differential expression analysis for RNA-seq count data. Produces CSV results, volcano plot, PCA plot, and MA plot.
+  - id: transcriptome
+    name: Transcriptome Analysis Engineer
+    description: >
+      Transcriptome analysis engineer specializing in bulk RNA-seq and microarray
+      differential expression. Guides users through experimental design questions,
+      identifies the right statistical method (DESeq2 for count data, limma for
+      microarrays), and ensures reproducible analysis.
     keywords:
       - rna-seq
       - rnaseq
+      - transcriptome
       - deseq2
+      - limma
       - differential expression
       - deg
-      - transcriptome
       - volcano
       - pca
       - ma plot
       - gene expression
       - bulk rna
-    repository: https://github.com/Margou816/BioSherpaHub
-    version: 0.0.1
-    entry: agents.transcriptome.agent:TranscriptomeAgent
-  - id: enrichment-v0.1.0
-    name: Enrichment Analysis
-    description: GO (BP/MF/CC) and KEGG pathway enrichment analysis for DEGs using clusterProfiler with fixed R scripts.
-    keywords: [go, kegg, enrichment, pathway, gene ontology, clusterprofiler, functional, annotation]
-    repository: https://github.com/Margou816/BioSherpaHub
+      - microarray
+      - count matrix
+    skills:
+      - deseq2
+      - limma
     version: 0.1.0
-    entry: agents.enrichment.agent:EnrichmentAgent
-  - id: pubmed-v0.1.0
-    name: PubMed Literature Search
-    description: Search PubMed for articles related to genes or keywords via NCBI E-utilities. No API key required.
-    keywords: [pubmed, literature, articles, ncbi, reference, citation]
-    repository: https://github.com/Margou816/BioSherpaHub
+
+  - id: enrichment
+    name: Enrichment Analysis Engineer
+    description: >
+      Functional enrichment analysis engineer. Takes DEG lists and performs
+      GO (BP/MF/CC) and KEGG pathway enrichment. Helps users choose the right
+      organism database, interpret p/q values, and understand pathway results.
+    keywords:
+      - go
+      - kegg
+      - enrichment
+      - pathway
+      - gene ontology
+      - clusterprofiler
+      - functional annotation
+      - gsea
+    skills:
+      - go
+      - kegg
     version: 0.1.0
-    entry: agents.pubmed.agent:PubMedAgent
+
+  - id: pubmed
+    name: PubMed Literature Engineer
+    description: >
+      Literature search specialist. Searches PubMed for articles related to
+      genes, pathways, or keywords. Helps users construct effective NCBI queries
+      and interpret search results.
+    keywords:
+      - pubmed
+      - literature
+      - articles
+      - ncbi
+      - reference
+      - citation
+      - paper
+      - journal
+    skills:
+      - pubmed
+    version: 0.1.0
+
 metadata:
-  updated: "2026-07-08"
+  updated: "2026-07-10"
   version: "0.1.0"

@@ -1,67 +1,53 @@
-﻿"""EnrichmentAgent -- GO and KEGG pathway enrichment via clusterProfiler."""
+"""Enrichment agent -- thin tool dispatcher.
+
+Maps tool names to handler scripts for GO/KEGG enrichment.
+"""
 from __future__ import annotations
-import json
+import subprocess, sys, os
 from pathlib import Path
-from typing import List
-from core_types import (
-    BaseAgent, Request, Result, ResultStatus, WorkflowPlan,
-    Artifact, ArtifactType,
-)
-from .tool_runner import run_go_enrichment, run_kegg_enrichment
+from typing import Dict, Any
 
-_ENRICHMENT_KEYWORDS = frozenset({
-    "go", "kegg", "enrichment", "pathway", "gene ontology",
-    "clusterprofiler", "functional",
-})
+_HERE = Path(__file__).resolve().parent.parent.parent
 
-class EnrichmentAgent(BaseAgent):
-    name: str = "enrichment"
-    version: str = "0.1.0"
-    description: str = "GO and KEGG pathway enrichment analysis"
+TOOLS: Dict[str, Path] = {
+    "go_enrichment": _HERE / "tools" / "go_enrichment" / "handler.py",
+    "kegg_enrichment": _HERE / "tools" / "kegg_enrichment" / "handler.py",
+}
 
-    def can_handle(self, request: Request) -> bool:
-        return any(kw in request.query.lower() for kw in _ENRICHMENT_KEYWORDS)
+_PARAM_MAP: Dict[str, Dict[str, str]] = {
+    "go_enrichment": {
+        "deg_file": "--deg-file", "organism": "--organism",
+        "pvalue_cutoff": "--pvalue-cutoff", "qvalue_cutoff": "--qvalue-cutoff",
+        "output_dir": "--output-dir",
+    },
+    "kegg_enrichment": {
+        "deg_file": "--deg-file", "organism": "--organism",
+        "pvalue_cutoff": "--pvalue-cutoff", "qvalue_cutoff": "--qvalue-cutoff",
+        "output_dir": "--output-dir",
+    },
+}
 
-    def plan(self, request: Request) -> WorkflowPlan:
-        wf = WorkflowPlan(name="Enrichment Analysis")
-        wf.add_step(tool="go_enrichment", params={
-            "deg_file": request.user_parameters.get("deg_file", ""),
-            "organism": request.user_parameters.get("organism", "org.Hs.eg.db"),
-            "pvalue_cutoff": request.user_parameters.get("pvalue_cutoff", 0.05),
-            "qvalue_cutoff": request.user_parameters.get("qvalue_cutoff", 0.2),
-            "output_dir": request.user_parameters.get("output_dir", "."),
-        }, description="GO enrichment")
-        wf.add_step(tool="kegg_enrichment", params={
-            "deg_file": request.user_parameters.get("deg_file", ""),
-            "organism": request.user_parameters.get("organism", "org.Hs.eg.db"),
-            "pvalue_cutoff": request.user_parameters.get("pvalue_cutoff", 0.05),
-            "qvalue_cutoff": request.user_parameters.get("qvalue_cutoff", 0.2),
-            "output_dir": request.user_parameters.get("output_dir", "."),
-        }, description="KEGG enrichment")
-        return wf
-
-    def execute(self, request: Request, plan: WorkflowPlan) -> Result:
-        artifacts: List[Artifact] = []
-        errors: List[str] = []
-        runners = {"go_enrichment": run_go_enrichment, "kegg_enrichment": run_kegg_enrichment}
-        for step in plan.steps:
-            runner = runners.get(step.tool)
-            if runner is None: errors.append(f"Unknown tool: {step.tool}"); continue
-            try:
-                step_artifacts = runner(params=step.params)
-                artifacts.extend(step_artifacts)
-            except Exception as exc:
-                errors.append(f"{step.tool} failed: {exc}")
-        if errors and not artifacts: return Result.failure(errors=errors)
-        summary = self.summarize(Result(artifacts=artifacts, status=ResultStatus.SUCCESS))
-        return Result.success(artifacts=artifacts, summary=summary)
-
-    def summarize(self, result: Result) -> str:
-        if not result.artifacts: return "Enrichment produced no results."
-        parts = ["## Enrichment Analysis\n"]
-        for a in result.artifacts:
-            if a.artifact_type == ArtifactType.TABLE and a.path:
-                parts.append(f"Table: `{a.path}`")
-            elif a.artifact_type == ArtifactType.IMAGE and a.path:
-                parts.append(f"Plot: `{a.path}`")
-        return "\n".join(parts)
+def execute_tool(tool_name: str, params: Dict[str, Any], r_libs_user: str = "") -> Dict[str, Any]:
+    if tool_name not in TOOLS:
+        return {"status": "error", "summary": f"Unknown tool: {tool_name}", "errors": [f"Tool '{tool_name}' not in enrichment agent"]}
+    handler = TOOLS[tool_name]
+    mapping = _PARAM_MAP.get(tool_name, {})
+    cmd = [sys.executable, str(handler)]
+    for key, flag in mapping.items():
+        if key in params and params[key] != "":
+            cmd.extend([flag, str(params[key])])
+    outdir = params.get("output_dir", "biosherpa_output")
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    if r_libs_user:
+        env["R_LIBS_USER"] = r_libs_user
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=600, env=env)
+        stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        if result.returncode != 0:
+            return {"status": "error", "summary": f"Tool {tool_name} failed (exit {result.returncode})", "errors": [stderr], "stderr": stderr}
+        return {"status": "success", "summary": f"{tool_name} completed", "stderr": stderr}
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "summary": f"Tool {tool_name} timed out", "errors": ["Timeout after 600s"]}
+    except Exception as exc:
+        return {"status": "error", "summary": str(exc), "errors": [str(exc)]}

@@ -1,77 +1,67 @@
-﻿"""TranscriptomeAgent DESeq2 differential expression via fixed pipeline."""
+"""Transcriptome agent -- thin tool dispatcher.
+
+Maps tool names to handler scripts for the transcriptome domain.
+Called by run_agent.py: python run_agent.py --agent transcriptome --tool deseq2_analysis --params '{...}'
+"""
 from __future__ import annotations
-import json
+import subprocess, sys, os, json
 from pathlib import Path
-from typing import List
-from core_types import (
-    BaseAgent, Request, Result, ResultStatus, WorkflowPlan,
-    Artifact, ArtifactType,
-)
-from .tool_runner import run_deseq2
+from typing import Dict, Any
 
-_TRANSCRIPTOME_KEYWORDS = frozenset({
-    "rna", "rnaseq", "rna-seq", "transcriptome", "transcriptomics",
-    "deseq2", "deseq", "differential expression", "differentially expressed",
-    "deg", "degs", "count matrix", "gene expression", "volcano", "ma plot",
-    "pca", "transcriptom",
-})
+_HERE = Path(__file__).resolve().parent.parent.parent
 
-class TranscriptomeAgent(BaseAgent):
-    name: str = "transcriptome"
-    version: str = "0.0.1"
-    description: str = "DESeq2-based differential expression analysis"
+TOOLS: Dict[str, Path] = {
+    "deseq2_analysis": _HERE / "tools" / "deseq2_analysis" / "handler.py",
+    "limma_analysis": _HERE / "tools" / "limma_analysis" / "handler.py",
+}
 
-    def can_handle(self, request: Request) -> bool:
-        return any(kw in request.query.lower() for kw in _TRANSCRIPTOME_KEYWORDS)
+_PARAM_MAP: Dict[str, Dict[str, str]] = {
+    "deseq2_analysis": {
+        "counts_file": "--counts-file",
+        "metadata_file": "--metadata-file",
+        "design_formula": "--design-formula",
+        "contrast_variable": "--contrast-variable",
+        "treatment_group": "--treatment-group",
+        "control_group": "--control-group",
+        "output_dir": "--output-dir",
+        "alpha": "--alpha",
+        "lfc_threshold": "--lfc-threshold",
+    },
+    "limma_analysis": {
+        "expr_file": "--expr-file",
+        "metadata_file": "--metadata-file",
+        "design_formula": "--design-formula",
+        "contrast_variable": "--contrast-variable",
+        "treatment_group": "--treatment-group",
+        "control_group": "--control-group",
+        "output_dir": "--output-dir",
+        "pvalue_cutoff": "--pvalue-cutoff",
+        "lfc_cutoff": "--lfc-cutoff",
+    },
+}
 
-    def plan(self, request: Request) -> WorkflowPlan:
-        wf = WorkflowPlan(name="DESeq2 Differential Expression")
-        wf.add_step(tool="deseq2_analysis", params={
-            "counts_file": request.user_parameters.get("counts_file", ""),
-            "metadata_file": request.user_parameters.get("metadata_file", ""),
-            "design_formula": request.user_parameters.get("design_formula", "~condition"),
-            "contrast_variable": request.user_parameters.get("contrast_variable", "condition"),
-            "treatment_group": request.user_parameters.get("treatment_group", ""),
-            "control_group": request.user_parameters.get("control_group", ""),
-            "output_dir": request.user_parameters.get("output_dir", "."),
-            "alpha": request.user_parameters.get("alpha", 0.05),
-            "lfc_threshold": request.user_parameters.get("lfc_threshold", 1.0),
-        }, description="DESeq2 analysis")
-        return wf
-
-    def execute(self, request: Request, plan: WorkflowPlan) -> Result:
-        errors: List[str] = []
-        artifacts: List[Artifact] = []
-        for step in plan.steps:
-            if step.tool != "deseq2_analysis":
-                errors.append(f"Unknown tool: {step.tool}")
-                continue
-            try:
-                step_artifacts = run_deseq2(
-                    params=step.params,
-                    r_libs_user=request.metadata.get("r_libs_user"),
-                )
-                artifacts.extend(step_artifacts)
-            except Exception as exc:
-                errors.append(f"DESeq2 failed: {exc}")
-                return Result.failure(errors=errors)
-        summary = self.summarize(Result(artifacts=artifacts, status=ResultStatus.SUCCESS))
-        return Result.success(artifacts=artifacts, summary=summary)
-
-    def summarize(self, result: Result) -> str:
-        if not result.artifacts:
-            return "DESeq2 produced no artifacts."
-        parts = ["## DESeq2 Differential Expression Analysis\n"]
-        for a in result.artifacts:
-            if a.name == "summary.json" and a.path:
-                try:
-                    data = json.loads(a.path.read_text(encoding="utf-8", errors="replace"))
-                    parts.append(f"DESeq2: {data.get('significant',0)} of {data.get('total_genes',0)} DEGs "
-                                 f"({data.get('upregulated',0)} up, {data.get('downregulated',0)} down)")
-                except Exception: pass
-        for a in result.artifacts:
-            if a.artifact_type == ArtifactType.TABLE and a.path:
-                parts.append(f"Results: `{a.path}`")
-            elif a.artifact_type == ArtifactType.IMAGE and a.path:
-                parts.append(f"Plot: `{a.path}`")
-        return "\n".join(parts)
+def execute_tool(tool_name: str, params: Dict[str, Any], r_libs_user: str = "") -> Dict[str, Any]:
+    """Dispatch tool_name to the matching handler script and return status JSON."""
+    if tool_name not in TOOLS:
+        return {"status": "error", "summary": f"Unknown tool: {tool_name}", "errors": [f"Tool '{tool_name}' not in transcriptome agent"]}
+    handler = TOOLS[tool_name]
+    mapping = _PARAM_MAP.get(tool_name, {})
+    cmd = [sys.executable, str(handler)]
+    for key, flag in mapping.items():
+        if key in params and params[key] != "":
+            cmd.extend([flag, str(params[key])])
+    outdir = params.get("output_dir", "biosherpa_output")
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    if r_libs_user:
+        env["R_LIBS_USER"] = r_libs_user
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=600, env=env)
+        stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        if result.returncode != 0:
+            return {"status": "error", "summary": f"Tool {tool_name} failed (exit {result.returncode})", "errors": [stderr], "stderr": stderr}
+        return {"status": "success", "summary": f"{tool_name} completed", "stderr": stderr}
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "summary": f"Tool {tool_name} timed out", "errors": ["Timeout after 600s"]}
+    except Exception as exc:
+        return {"status": "error", "summary": str(exc), "errors": [str(exc)]}
