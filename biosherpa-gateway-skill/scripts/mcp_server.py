@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""BioSherpa MCP Server -- Agent-Skill-Tool three-level navigation over JSON-RPC stdio.
+"""BioSherpa MCP Server - Agent-Skill-Tool three-level navigation over JSON-RPC stdio.
 
 Exposes 3 MCP tools:
   find_biosherpa_agent  -- search registry keywords, return agent.md persona
@@ -20,6 +20,33 @@ CACHE_ROOT = Path.home() / ".biosherpa" / "cache"
 AGENT_TIMEOUT = 600
 
 _LOCAL = bool(os.environ.get("BIOSHERPA_LOCAL", ""))
+
+
+def _check_dependencies():
+    """Verify required binaries are available at startup. Returns list of issues."""
+    issues = []
+    # Check Python
+    if not shutil.which(sys.executable):
+        issues.append(f"Python not found at: {sys.executable}")
+    # Check Rscript
+    import shutil as _shutil
+    rscript = _shutil.which("Rscript") or _shutil.which("Rscript.exe")
+    if not rscript:
+        # Search common R locations
+        for drive in ["C:", "D:", "G:", "F:"]:
+            rdir = Path(drive) / "Program Files" / "R"
+            if rdir.is_dir():
+                for ver in sorted(os.listdir(str(rdir)), reverse=True):
+                    rs = rdir / ver / "bin" / "Rscript.exe"
+                    if rs.is_file():
+                        rscript = str(rs)
+                        break
+                if rscript:
+                    break
+    if not rscript:
+        issues.append("Rscript not found. Install R and ensure R\\bin is on PATH or set RSCRIPT_PATH.")
+    return issues
+
 
 
 def fetch_registry() -> List[Dict[str, Any]]:
@@ -326,6 +353,14 @@ def handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def main() -> None:
     CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+    # Startup health check -- report issues but don't block
+    deps = _check_dependencies()
+    if deps:
+        sys.stderr.write("[BioSherpa] WARNING: Dependency issues detected:\n")
+        for issue in deps:
+            sys.stderr.write(f"  - {issue}\n")
+        sys.stderr.write("[BioSherpa] Some tools may fail until resolved.\n")
+        sys.stderr.flush()
     for line in sys.stdin:
         line = line.strip()
         if not line: continue
