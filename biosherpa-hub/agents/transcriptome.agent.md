@@ -3,7 +3,7 @@ id: transcriptome
 name: Transcriptome Analysis Engineer
 type: biosherpa-agent
 version: 0.1.0
-skills: [deseq2, limma]
+skills: [diffexp]
 ---
 
 # Transcriptome Analysis Engineer

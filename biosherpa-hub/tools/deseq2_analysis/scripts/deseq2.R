@@ -18,6 +18,10 @@ suppressPackageStartupMessages({
     library(DESeq2)
     library(ggplot2)
     library(EnhancedVolcano)
+    library(FactoMineR)
+    library(factoextra)
+    library(ggrepel)
+    library(pheatmap)
 })
 
 # ---------------------------------------------------------------------------
@@ -36,7 +40,7 @@ option_list <- list(
 )
 
 parser <- OptionParser(option_list = option_list)
-opts <- parse_args(parser)
+# opts <- parse_args(parser)
 
 opts$alpha <- as.numeric(opts$alpha)
 opts[["lfc-threshold"]] <- as.numeric(opts[["lfc-threshold"]])
@@ -66,6 +70,78 @@ storage.mode(counts) <- "integer"
 design_formula <- as.formula(opts$design)
 
 # ---------------------------------------------------------------------------
+# PCA plot
+# ---------------------------------------------------------------------------
+
+# vst transformation
+vsd <- if (nrow(dds) >= 50) {
+  vst(dds, blind = TRUE)
+} else {
+  varianceStabilizingTransformation(dds, blind = TRUE)
+}
+
+# Extract transformed expression matrix
+expr_vsd <- assay(vsd)
+
+# PCA input:
+# rows = samples
+# columns = genes
+pca_data <- as.data.frame(t(expr_vsd))
+
+# Run PCA
+data.pca <- PCA(pca_data, graph = FALSE)
+
+# Group information
+group_list <- metadata[[contrast_var]]
+
+colors <- c("#CA2C2C", "#194E7A", "#ED6356", "#41A98E", "#00B4D7", 
+            "#EFA73B", "#AC3282", "#A99A5A", "#65619D", "#F4EE72")
+
+
+# PCA plot
+pca_plot <- fviz_pca_ind(
+  data.pca, 
+  geom.ind = "point",
+  palette = colors[1:length(unique(metadata$Group))],
+  # sample colors
+  col.ind = group_list,
+  # point settings
+  pointsize = 1.3,
+  alpha.ind = 0.6,
+  # confidence ellipse
+  addEllipses = TRUE,
+  ellipse.level = 0.95,
+  alpha.ellipse = 0.3,
+  # sample labels
+  repel = TRUE,
+  legend.title = contrast_var
+) +
+  theme_bw() +
+  ggtitle("PCA Plot") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 13)
+  )
+
+
+# Save PCA figure
+
+pca_path <- file.path(opts[["output-dir"]], "1_PCA.pdf")
+
+ggsave(
+  filename = pca_path,
+  plot = pca_plot,
+  width = 5.5,
+  height = 4
+)
+
+
+cat("PCA plot written to:", pca_path, "\n")
+
+# ---------------------------------------------------------------------------
 # DESeq2 pipeline
 # ---------------------------------------------------------------------------
 dds <- DESeqDataSetFromMatrix(
@@ -74,27 +150,37 @@ dds <- DESeqDataSetFromMatrix(
     design    = design_formula
 )
 
-# Pre-filter: keep genes with at least 10 reads total
-dds <- dds[rowSums(counts(dds)) >= 10, ]
+# Pre-filter: Filter all 0 genes
+dds <- dds[rowSums(counts(dds)) > 0, ]
 
 dds <- DESeq(dds)
 
 # ---------------------------------------------------------------------------
 # Extract results for the specified contrast
 # ---------------------------------------------------------------------------
-contrast_var <- opts[["contrast-variable"]]
-treat <- opts$treatment
-ctrl  <- opts$control
+# contrast_var <- opts[["contrast-variable"]]
+# treat <- opts$treatment
+# ctrl  <- opts$control
 
-res <- results(
-    dds,
-    contrast      = c(contrast_var, treat, ctrl),
-    alpha         = opts$alpha,
-    lfcThreshold  = opts[["lfc-threshold"]]
-)
+res <- results(dds)
+
+# 设置 FC 和 p 值阈值
+logFC_threshold <- opts$`lfc-threshold`
+pval_threshold <- opts$alpha
+
+# 筛选差异基因
+res <- as.data.frame(res)
+res$gene_id <- rownames(res)
+res$Regulation <- "ns"
+res$Regulation[(res$pvalue < pval_threshold) & (res$log2FoldChange < -logFC_threshold)] <- "Down"
+res$Regulation[(res$pvalue < pval_threshold) & (res$log2FoldChange > logFC_threshold)] <- "Up"
+
+# 添加 FoldChange 列
+res$FoldChange <- 2^res$log2FoldChange
+
 
 # Sort by adjusted p-value
-res_ordered <- res[order(res$padj), ]
+res_ordered <- res[order(res$pvalue), c("gene_id", "FoldChange", "log2FoldChange", "pvalue", "padj", "Regulation", "baseMean", "lfcSE", "stat")]
 
 # ---------------------------------------------------------------------------
 # Ensure output directory exists
@@ -102,65 +188,94 @@ res_ordered <- res[order(res$padj), ]
 dir.create(opts[["output-dir"]], showWarnings = FALSE, recursive = TRUE)
 
 # ---------------------------------------------------------------------------
-# Write results CSV
+# Write results TSV
 # ---------------------------------------------------------------------------
-csv_path <- file.path(opts[["output-dir"]], "deseq2_results.csv")
-write.csv(as.data.frame(res_ordered), file = csv_path, row.names = TRUE)
-cat("Results written to:", csv_path, "\n")
+tsv_path <- file.path(opts[["output-dir"]], "2_deseq2_results.tsv")
+write.table(as.data.frame(res_ordered), file = tsv_path, row.names = FALSE, sep = '\t', quote = F)
+cat("Results written to:", tsv_path, "\n")
 
 # ---------------------------------------------------------------------------
 # Volcano plot
 # ---------------------------------------------------------------------------
-volcano_path <- file.path(opts[["output-dir"]], "volcano.png")
-png(volcano_path, width = 2400, height = 2400, res = 300)
-suppressMessages(
-    print(
-        EnhancedVolcano(
-            res_ordered,
-            lab          = rownames(res_ordered),
-            x            = "log2FoldChange",
-            y            = "padj",
-            title        = paste(treat, "vs", ctrl),
-            pCutoff      = opts$alpha,
-            FCcutoff     = opts[["lfc-threshold"]],
-            pointSize    = 1.5,
-            labSize      = 3.0,
-            legendPosition = "right",
-            drawConnectors = TRUE,
-            max.overlaps  = 15
-        )
-    )
-)
-invisible(dev.off())
+# 选取上调和下调的前5个基因
+top_up <- res_ordered[res_ordered$Regulation == "Up", ]
+top_up <- top_up[order(-top_up$log2FoldChange), ][1:5, ]
+
+top_down <- res_ordered[res_ordered$Regulation == "Down", ]
+top_down <- top_down[order(top_down$log2FoldChange), ][1:5, ]
+
+# 合并top基因
+top_genes <- rbind(top_up, top_down)
+
+# 获取Down和Up的数量
+up_count <- nrow(res_ordered[res_ordered$Regulation == "Up", ])
+down_count <- nrow(res_ordered[res_ordered$Regulation == "Down", ])
+
+p2 <- ggplot(res_ordered, aes(x = log2FoldChange, y = -log10(pvalue), colour = Regulation)) +
+  geom_point(alpha = 0.8, size = 3) +
+  geom_vline(xintercept = c(-opts[["lfc-threshold"]], opts[["lfc-threshold"]]), lty = 4, col = "black", lwd = 0.8) +
+  geom_hline(yintercept = -log10(opts$alpha), lty = 4, col = "black", lwd = 0.8) +
+  labs(title = paste(treat, "vs", ctrl), x = "log2FoldChange", y = "-log10(P.Value)") +
+  theme_bw() +
+  scale_color_manual(values = c("Down" = "#194E7A", "ns" = "#BCBCBC", "Up" = "#CA2C2C"),
+                     labels = c(paste0("Down(", down_count, ")"), "NS", paste0("Up(", up_count, ")"))) +
+  scale_x_continuous(limits = c(-5, 5), oob = scales::squish) +
+  scale_y_continuous(limits = c(0, 10), oob = scales::squish) +
+  geom_text_repel(data = top_genes, aes(label = gene_id), size = 5, color = "black",
+                  max.overlaps = 100, box.padding = 1, point.padding = 0.3,
+                  segment.size = 0.6, segment.alpha = 0.5, min.segment.length = 0) +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        axis.title = element_text(size = 18),
+        axis.text = element_text(size = 16),
+        legend.text = element_text(size = 14),
+        legend.title = element_blank())
+
+volcano_path <- file.path(opts[["output-dir"]], "volcano.pdf")
+ggsave(filename = volcano_path, plot = p2, width = 8, height = 6)
 cat("Volcano plot written to:", volcano_path, "\n")
 
 # ---------------------------------------------------------------------------
-# PCA plot
+# Heatmap
 # ---------------------------------------------------------------------------
-vsd <- if (nrow(dds) >= 50) vst(dds, blind = TRUE) else varianceStabilizingTransformation(dds, blind = TRUE)
-pca_data <- plotPCA(vsd, intgroup = contrast_var, returnData = TRUE)
-percent_var <- round(100 * attr(pca_data, "percentVar"))
+# 提取上下调基因
 
-pca_plot <- ggplot(pca_data, aes(x = PC1, y = PC2, color = .data[[contrast_var]])) +
-    geom_point(size = 3) +
-    xlab(paste0("PC1: ", percent_var[1], "% variance")) +
-    ylab(paste0("PC2: ", percent_var[2], "% variance")) +
-    ggtitle("PCA Plot") +
-    theme_bw(base_size = 14) +
-    theme(legend.title = element_blank())
+up_genes <- res_ordered[res_ordered$Regulation == "Up", ]
+down_genes <- res_ordered[res_ordered$Regulation == "Down", ]
 
-pca_path <- file.path(opts[["output-dir"]], "pca.png")
-ggsave(pca_path, plot = pca_plot, width = 7, height = 6, dpi = 300)
-cat("PCA plot written to:", pca_path, "\n")
+# 分别按 logFC 排序，选取 Top10
+top10_up <- up_genes[order(-up_genes$log2FoldChange), ][1:10, "gene_id"]
+top10_down <- down_genes[order(down_genes$log2FoldChange), ][1:10, "gene_id"]
 
-# ---------------------------------------------------------------------------
-# MA plot
-# ---------------------------------------------------------------------------
-ma_path <- file.path(opts[["output-dir"]], "ma.png")
-png(ma_path, width = 2000, height = 2000, res = 300)
-plotMA(res_ordered, ylim = c(-5, 5), main = paste("MA Plot:", treat, "vs", ctrl))
-invisible(dev.off())
-cat("MA plot written to:", ma_path, "\n")
+# 合并 Top10 上下调基因
+selected_genes <- c(top10_up, top10_down)
+
+heatmap_data <- assay(vsd)[selected_genes, ]
+
+annotation_col <- data.frame(Group = metadata[[contrast_var]])
+rownames(annotation_col) <- colnames(heatmap_data)
+
+annotation_colors <- list(Group = c("Control" = "#40A6A0", "LN" = "#EE4420"))
+
+heatmap_path <- file.path(opts[["output-dir"]], "heatmap.pdf")
+
+pdf(heatmap_path, width = 8, height = 6)
+
+pheatmap(mat = heatmap_data,
+         scale = "row",
+         annotation_col = annotation_col,
+         annotation_colors = annotation_colors,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         show_rownames = TRUE,
+         show_colnames = FALSE,
+         border_color = "black",
+         fontsize = 12,
+         fontsize_row = 10,
+         color = colorRampPalette(c("#194E7A", "white", "#CA2C2C"))(50))
+
+dev.off()
+
+cat("Heatmap written to:", heatmap_path, "\n")
 
 # ---------------------------------------------------------------------------
 # Summary JSON

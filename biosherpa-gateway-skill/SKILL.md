@@ -1,6 +1,6 @@
 ---
 name: biosherpa-mcp
-description: BioSherpa -- bioinformatics analysis platform using the Model Context Protocol. Use when the user requests RNA-seq, deseq2, limma, differential expression, GO, KEGG, GSEA, PPI, single-cell (Seurat, CellChat, Monocle), spatial transcriptomics, pathway enrichment, PubMed literature search, or any bioinformatics analysis. Supports three-level navigation: find an agent -> load a skill -> run a tool.
+description: BioSherpa -- bioinformatics analysis platform using the Model Context Protocol. Use when the user requests RNA-seq, diffexp (DESeq2 + limma), differential expression, GO, KEGG, GSEA, PPI, single-cell (Seurat, CellChat, Monocle), spatial transcriptomics, pathway enrichment, PubMed literature search, or any bioinformatics analysis. Supports three-level navigation: find an agent -> load a skill -> run a tool.
 user-invocable: true
 metadata:
   openclaw:
@@ -39,7 +39,7 @@ Bioinformatics analysis platform with a three-level Agent-Skill-Tool architectur
 ## Available Agents
 
 | Agent | Description | Skills          |
-| transcriptome | Bulk RNA-seq / microarray differential expression | deseq2, limma     || pubmed | PubMed literature search | pubmed |
+| transcriptome | Bulk RNA-seq / microarray differential expression | diffexp (DESeq2 + limma)     || pubmed | PubMed literature search | pubmed |
 
 ## Configuration
 

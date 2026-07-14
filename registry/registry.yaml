@@ -5,9 +5,8 @@ entries:
     name: Transcriptome Analysis Engineer
     description: >
       Transcriptome analysis engineer specializing in bulk RNA-seq and microarray
-      differential expression. Guides users through experimental design questions,
-      identifies the right statistical method (DESeq2 for count data, limma for
-      microarrays), and ensures reproducible analysis.
+      differential expression. Uses the unified diffexp pipeline (DESeq2 for counts,
+      limma for normalized/microarray data).
     keywords:
       - rna-seq
       - rnaseq
@@ -24,16 +23,14 @@ entries:
       - microarray
       - count matrix
     skills:
-      - deseq2
-      - limma
+      - diffexp
     version: 0.1.0
 
   - id: enrichment
     name: Enrichment Analysis Engineer
     description: >
       Functional enrichment analysis engineer. Takes DEG lists and performs
-      GO (BP/MF/CC) and KEGG pathway enrichment. Helps users choose the right
-      organism database, interpret p/q values, and understand pathway results.
+      GO (BP/MF/CC) and KEGG pathway enrichment.
     keywords:
       - go
       - kegg
@@ -52,8 +49,7 @@ entries:
     name: PubMed Literature Engineer
     description: >
       Literature search specialist. Searches PubMed for articles related to
-      genes, pathways, or keywords. Helps users construct effective NCBI queries
-      and interpret search results.
+      genes, pathways, or keywords.
     keywords:
       - pubmed
       - literature
@@ -68,5 +64,5 @@ entries:
     version: 0.1.0
 
 metadata:
-  updated: "2026-07-10"
+  updated: "2026-07-13"
   version: "0.1.0"
