@@ -5,60 +5,86 @@ from pathlib import Path
 
 
 def _find_rscript():
-    """Locate Rscript.exe using multiple strategies across all possible install locations."""
-    import shutil
-    # 1. Explicit RSCRIPT_PATH env var (highest priority)
-    env_r = os.environ.get("RSCRIPT_PATH", "")
-    if env_r and os.path.isfile(env_r):
-        return env_r
+    """Find a working Rscript. Collects ALL candidates, then tests each.
+    Priority: explicit RSCRIPT_PATH, then PATH, Registry, disk scan, R_HOME.
+    Each candidate is verified with --version before being returned."""
+    import subprocess as _sp
+    import shutil as _sh
 
-    # 3. Windows Registry -- R writes InstallPath to HKLM\SOFTWARE\R-core\R
+    def _test(rscript):
+        """Smoke test: does this Rscript actually run?"""
+        try:
+            r = _sp.run([rscript, "--version"], capture_output=True, timeout=15)
+            return r.returncode == 0
+        except Exception:
+            return False
+
+    candidates = []
+
+    # 1. Explicit RSCRIPT_PATH
+    env_r = os.environ.get("RSCRIPT_PATH", "")
+    if env_r and os.path.isfile(env_r) and env_r not in candidates:
+        candidates.append(env_r)
+
+    # 2. PATH (user active R, highest implicit priority)
+    found = _sh.which("Rscript") or _sh.which("Rscript.exe")
+    if found and found not in candidates:
+        candidates.append(found)
+
+    # 3. Windows Registry (all hives, both bitness)
     try:
         import winreg
         for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
             for key_path in [r"SOFTWARE\R-core\R", r"SOFTWARE\WOW6432Node\R-core\R"]:
                 try:
                     with winreg.OpenKey(hive, key_path) as key:
-                        install_path, _ = winreg.QueryValueEx(key, "InstallPath")
-                        rscript = os.path.join(install_path, "bin", "Rscript.exe")
-                        if os.path.isfile(rscript):
-                            return rscript
+                        ip, _ = winreg.QueryValueEx(key, "InstallPath")
+                        rs = os.path.join(ip, "bin", "Rscript.exe")
+                        if os.path.isfile(rs) and rs not in candidates:
+                            candidates.append(rs)
                 except (OSError, FileNotFoundError):
                     continue
     except ImportError:
-        pass  # winreg not available on non-Windows
+        pass
 
-    # 4. Scan all drives for R in Program Files and Program Files (x86)
-    import string
-    for drive in [f"{d}:" for d in string.ascii_uppercase if os.path.exists(f"{d}:")]:
+    # 4. Disk scan: all drives
+    import string as _str
+    for drive in [d + ":" for d in _str.ascii_uppercase if os.path.exists(d + ":")]:
         for prog in ["Program Files", "Program Files (x86)"]:
             rdir = os.path.join(drive, os.sep, prog, "R")
             if not os.path.isdir(rdir):
                 continue
             try:
-                versions = sorted(os.listdir(rdir), reverse=True)
+                for ver in sorted(os.listdir(rdir), reverse=True):
+                    rs = os.path.join(rdir, ver, "bin", "Rscript.exe")
+                    if os.path.isfile(rs) and rs not in candidates:
+                        candidates.append(rs)
             except OSError:
                 continue
-            for ver in versions:
-                rscript = os.path.join(rdir, ver, "bin", "Rscript.exe")
-                if os.path.isfile(rscript):
-                    return rscript
 
-    # 5. R_HOME environment variable (set by R during installation)
+    # 5. R_HOME
     r_home = os.environ.get("R_HOME", "")
     if r_home:
-        rscript = os.path.join(r_home, "bin", "Rscript.exe")
-        if os.path.isfile(rscript):
-            return rscript
+        rs = os.path.join(r_home, "bin", "Rscript.exe")
+        if os.path.isfile(rs) and rs not in candidates:
+            candidates.append(rs)
 
-    # 2. PATH (user shell R)
-    found = shutil.which("Rscript") or shutil.which("Rscript.exe")
-    if found:
-        return found
+    if not candidates:
+        raise FileNotFoundError(
+            "Rscript.exe not found. Install R from https://cran.r-project.org"
+        )
+
+    # Test each candidate, return first working one
+    failed = []
+    for rs in candidates:
+        if _test(rs):
+            return rs
+        failed.append(rs)
 
     raise FileNotFoundError(
-        "Rscript.exe not found. Install R from https://cran.r-project.org\n"
-        "Alternatively, set RSCRIPT_PATH to the full path of Rscript.exe."
+        "No working R installation found. Tested candidates:\n" +
+        "\n".join("  [FAILED] " + rs for rs in failed) +
+        "\n\nAll failed --version check. Check R installation integrity."
     )
 from typing import List, Optional
 
