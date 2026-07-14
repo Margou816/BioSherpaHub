@@ -17,7 +17,7 @@ suppressPackageStartupMessages({
   library(pheatmap)
   library(FactoMineR)
   library(factoextra)
-  library(jsonlite)
+  # jsonlite loaded conditionally below
 })
 
 # ---------------------------------------------------------------------------
@@ -353,8 +353,15 @@ summary_list <- list(
   upregulated     = length(up),
   downregulated   = length(down)
 )
-writeLines(toJSON(summary_list, auto_unbox=TRUE, pretty=TRUE),
+if (has_jsonlite) {
+  writeLines(jsonlite::toJSON(summary_list, auto_unbox=TRUE, pretty=TRUE),
            file.path(outdir, "5_summary.json"))
+} else {
+  # Base R fallback: write as pretty-printed list
+  sink(file.path(outdir, "5_summary.json"))
+  str(summary_list)
+  sink()
+}
 cat("Summary written to:", file.path(outdir, "5_summary.json"), "\n")
 
 # ---------------------------------------------------------------------------
@@ -372,7 +379,7 @@ code_lines <- c(
   "  library(pheatmap)",
   "  library(FactoMineR)",
   "  library(factoextra)",
-  "  library(jsonlite)",
+  "  # jsonlite loaded conditionally below",
   "})",
   "",
   "# --- Parameters ---",
@@ -435,7 +442,8 @@ code_lines <- c(
   sprintf('ggsave("%s", volcano_plot, width=8, height=6)', file.path(outdir,"2_volcano.pdf")),
   "",
   "# --- Summary ---",
-  sprintf('writeLines(toJSON(summary_list, auto_unbox=TRUE, pretty=TRUE), "%s")',
+  sprintf('if (has_jsonlite) {
+  writeLines(jsonlite::toJSON(summary_list, auto_unbox=TRUE, pretty=TRUE), "%s")',
           file.path(outdir,"5_summary.json"))
 )
 
@@ -526,7 +534,7 @@ report_md_path <- file.path(outdir, "7_report.md")
 writeLines(report_md, report_md_path)
 
 # Try converting to HTML if rmarkdown is available
-if (requireNamespace("rmarkdown", quietly=TRUE)) {
+if (has_rmarkdown) {
   tryCatch({
     rmarkdown::render(report_md_path, output_format="html_document",
                       output_file="7_report.html", output_dir=outdir,

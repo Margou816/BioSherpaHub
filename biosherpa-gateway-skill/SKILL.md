@@ -41,9 +41,20 @@ Bioinformatics analysis platform with a three-level Agent-Skill-Tool architectur
 | Agent | Description | Skills          |
 | transcriptome | Bulk RNA-seq / microarray differential expression | diffexp (DESeq2 + limma)     || pubmed | PubMed literature search | pubmed |
 
+
+## Windows Notes
+
+BioSherpa on Windows requires pre-compiled R packages. Source compilation
+requires Rtools (gcc), which is not included. All packages listed above must
+be installed as Windows binary packages via `install.packages(..., type="win.binary")`
+or `BiocManager::install(...)`.
+
+If `rmarkdown` or `knitr` are unavailable, HTML report generation is skipped
+and only the Markdown report is produced.
+
 ## Configuration
 
 - **python** -- for the MCP server and agent execution
 - **Rscript** -- for R-based analysis tools
 - **pyyaml** -- for registry parsing (`pip install pyyaml`)
-- **R packages** -- DESeq2, EnhancedVolcano, ggplot2, clusterProfiler, org.Hs.eg.db, enrichplot, optparse (in R_LIBS_USER)
+- **R packages** -- DESeq2, limma, ggplot2, ggrepel, pheatmap, FactoMineR, factoextra, jsonlite, scales, clusterProfiler, org.Hs.eg.db, enrichplot, optparse (in R_LIBS_USER). Optional: rmarkdown, knitr (for HTML reports)

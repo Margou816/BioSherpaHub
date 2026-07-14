@@ -262,10 +262,25 @@ def handle_run_tool(agent_id: str, tool_name: str, params: Dict[str, Any],
         if r_libs:
             cmd.extend(["--r-libs-user", r_libs])
         result = subprocess.run(cmd, capture_output=True, timeout=AGENT_TIMEOUT, cwd=str(pkg))
-        stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        run_stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        run_stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
+        # Parse agent JSON from stdout for detailed R error diagnostics
+        agent_result = {}
+        try:
+            agent_result = json.loads(run_stdout.strip())
+        except json.JSONDecodeError:
+            pass
         items = collect_outputs(outdir)
-        if stderr:
-            items.insert(0, {"type": "text", "text": f"=== DIAGNOSTIC (stderr) ===\n{stderr}"})
+        if run_stderr:
+            items.insert(0, {"type": "text", "text": f"=== DIAGNOSTIC (run_agent) ===\n{stderr}"})
+        # Layer 2: R stderr from agent JSON (most useful for debugging)
+        agent_stderr = agent_result.get("stderr", "")
+        if agent_stderr:
+            items.insert(0, {"type": "text", "text": f"=== R DIAGNOSTIC ===\n{agent_stderr}"})
+        # Layer 3: agent-level errors
+        if agent_result.get("status") == "error":
+            errors = agent_result.get("errors", [agent_result.get("summary", "Unknown error")])
+            items.insert(0, {"type": "text", "text": f"=== ERROR ===\n" + "\n".join(errors)})
         if result.returncode != 0:
             items.insert(0, {"type": "text", "text": f"Exit code: {result.returncode}"})
         items.append({"type": "text", "text": _location_summary(outdir)})
