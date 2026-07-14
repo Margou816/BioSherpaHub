@@ -13,7 +13,7 @@ def _find_rscript():
     if env_r and os.path.isfile(env_r):
         return env_r
 
-    # 2. Windows Registry -- R writes InstallPath to HKLM\SOFTWARE\R-core\R
+    # 3. Windows Registry -- R writes InstallPath to HKLM\SOFTWARE\R-core\R
     try:
         import winreg
         for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
@@ -29,7 +29,7 @@ def _find_rscript():
     except ImportError:
         pass  # winreg not available on non-Windows
 
-    # 3. Scan all drives for R in Program Files and Program Files (x86)
+    # 4. Scan all drives for R in Program Files and Program Files (x86)
     import string
     for drive in [f"{d}:" for d in string.ascii_uppercase if os.path.exists(f"{d}:")]:
         for prog in ["Program Files", "Program Files (x86)"]:
@@ -45,14 +45,14 @@ def _find_rscript():
                 if os.path.isfile(rscript):
                     return rscript
 
-    # 4. R_HOME environment variable (set by R during installation)
+    # 5. R_HOME environment variable (set by R during installation)
     r_home = os.environ.get("R_HOME", "")
     if r_home:
         rscript = os.path.join(r_home, "bin", "Rscript.exe")
         if os.path.isfile(rscript):
             return rscript
 
-    # 5. PATH fallback
+    # 2. PATH (user shell R)
     found = shutil.which("Rscript") or shutil.which("Rscript.exe")
     if found:
         return found

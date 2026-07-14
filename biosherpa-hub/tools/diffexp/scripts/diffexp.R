@@ -8,7 +8,17 @@
 # All visualization (PCA, volcano, heatmap) is shared across methods.
 # ------------------------------------------------------------------------------
 
-.libPaths(c(Sys.getenv("R_LIBS_USER"), .libPaths()))
+.libPaths(unique(c(.libPaths(), Sys.getenv("R_LIBS_USER"))))
+
+# --- Preflight: verify required R packages ---
+cat(sprintf("R version: %s\n", R.version.string))
+required_pkgs <- c("optparse", "ggplot2", "ggrepel", "pheatmap", "FactoMineR", "factoextra", "scales")
+missing_pkgs <- required_pkgs[!sapply(required_pkgs, requireNamespace, quietly = TRUE)]
+if (length(missing_pkgs) > 0) {
+  cat("WARNING: Missing R packages:\n")
+  for (p in missing_pkgs) cat(sprintf("  - %s\n", p))
+  cat("Run: install.packages(missing_pkgs, repos='https://cran.r-project.org')\n")
+}
 
 suppressPackageStartupMessages({
   library(optparse)
@@ -17,8 +27,19 @@ suppressPackageStartupMessages({
   library(pheatmap)
   library(FactoMineR)
   library(factoextra)
+  library(scales)
   # jsonlite loaded conditionally below
 })
+
+# --- Conditionally load optional packages (graceful degradation) ---
+has_jsonlite <- requireNamespace("jsonlite", quietly = TRUE)
+has_rmarkdown <- requireNamespace("rmarkdown", quietly = TRUE)
+if (!has_jsonlite) {
+  cat("NOTE: jsonlite not available, using base R for JSON output\n")
+}
+if (!has_rmarkdown) {
+  cat("NOTE: rmarkdown not available, HTML report will be skipped (MD only)\n")
+}
 
 # ---------------------------------------------------------------------------
 # CLI arguments
@@ -152,9 +173,10 @@ n_groups     <- length(group_levels)
 group_colors <- setNames(user_colors[1:n_groups], group_levels)
 
 # Volcano colors (Up/Down/NS)
-vol_up_col   <- group_colors[1]
-vol_down_col <- if (n_groups >= 2) group_colors[2] else "#194E7A"
-vol_ns_col   <- "#BCBCBC"
+# Fixed volcano colors (regulation direction, not group membership)
+vol_up_col   <- "#CA2C2C"  # red for up-regulated
+vol_down_col <- "#194E7A"  # blue for down-regulated
+vol_ns_col   <- "#BCBCBC"  # grey for not significant
 
 # Heatmap annotation colors
 annotation_colors <- list()
@@ -379,7 +401,6 @@ code_lines <- c(
   "  library(pheatmap)",
   "  library(FactoMineR)",
   "  library(factoextra)",
-  "  # jsonlite loaded conditionally below",
   "})",
   "",
   "# --- Parameters ---",
