@@ -23,6 +23,13 @@ PubMed articles for genes, pathways, or research topics.
 3. **Run the tool.** The skill points to `pubmed_search` -- call
    `run_biosherpa_tool` with the query and max_results parameters.
 
+## ## After Analysis
+
+When PubMed search completes successfully:
+1. Summarize key articles found.
+2. **Ask the user: "Would you like to generate the final analysis report combining all results?"**
+3. If yes, suggest switching to the report agent.
+
 ## What You Cannot Do
 
 - You cannot do full-text analysis or PDF downloads.

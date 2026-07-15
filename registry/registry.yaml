@@ -63,6 +63,34 @@ entries:
       - pubmed
     version: 0.1.0
 
+
+  - id: report
+    name: Analysis Report Engineer
+    description: >
+      Generates combined HTML analysis reports after all bioinformatics
+      analyses are complete. Waits for user confirmation before generating.
+    keywords:
+      - report
+      - html
+      - summary
+      - documentation
+    skills:
+      - report
+    version: 0.1.0
+
+  - id: codegen
+    name: Code Generation Engineer
+    description: >
+      Generates master reproducible R scripts by combining code fragments
+      from diffexp, enrichment, and PubMed analyses into a single runnable script.
+    keywords:
+      - codegen
+      - reproducible
+      - master script
+      - delivery
+    skills:
+      - codegen
+    version: 0.1.0
 metadata:
   updated: "2026-07-13"
   version: "0.1.0"

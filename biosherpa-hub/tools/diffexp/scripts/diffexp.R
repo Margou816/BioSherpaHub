@@ -195,7 +195,7 @@ if (method == "deseq2") {
   dds <- DESeq(dds)
   res <- as.data.frame(results(dds))
   res$gene_id <- rownames(res)
-  res$logFC   <- res$log2FoldChange
+  
   res$AveExpr <- res$baseMean
   # for PCA
   vsd <- if (nrow(dds) >= 50) vst(dds, blind=TRUE) else varianceStabilizingTransformation(dds, blind=TRUE)
@@ -213,6 +213,7 @@ if (method == "deseq2") {
   }
   coef_idx <- tail(contrast_cols, 1)
   res <- as.data.frame(topTable(fit, coef=coef_idx, number=Inf, adjust.method="BH"))
+colnames(res)[colnames(res) == "logFC"] <- "log2FoldChange"  # normalize column name
   res$gene_id <- rownames(res)
   # for PCA
   expr_transformed <- as.matrix(expr_data)
@@ -229,18 +230,18 @@ pval_col <- if (use_padj) "adj.P.Val" else "pvalue"
 pval_label <- if (use_padj) "padj" else "pvalue"
 
 res$Regulation <- "ns"
-res$Regulation[(res[[pval_col]] < pval_cut) & (res$logFC < -lfc_thresh)] <- "Down"
-res$Regulation[(res[[pval_col]] < pval_cut) & (res$logFC >  lfc_thresh)] <- "Up"
-res$FoldChange <- 2^res$logFC
+res$Regulation[(res[[pval_col]] < pval_cut) & (res$log2FoldChange < -lfc_thresh)] <- "Down"
+res$Regulation[(res[[pval_col]] < pval_cut) & (res$log2FoldChange >  lfc_thresh)] <- "Up"
+res$FoldChange <- 2^res$log2FoldChange
 
 res_ordered <- res[order(res[[pval_col]]),
-  c("gene_id","FoldChange","logFC","pvalue","padj","Regulation","AveExpr")]
+  c("gene_id","FoldChange","log2FoldChange","pvalue","padj","Regulation","AveExpr")]
 
 # ---------------------------------------------------------------------------
 # #3 results TSV
 # ---------------------------------------------------------------------------
 result_file <- file.path(outdir, paste0("3_", method, "_results.tsv"))
-write.table(res_ordered, file=result_file, row.names=FALSE, sep="\t", quote=FALSE)
+write.table(res_ordered, file=result_file, row.names=FALSE, sep="\t", quote=FALSE, fileEncoding="UTF-8")
 cat("Results written to:", result_file, "\n")
 
 # ---------------------------------------------------------------------------
@@ -288,7 +289,7 @@ top_up   <- head(res_ordered[res_ordered$Regulation == "Up", ], 10)
 top_down <- head(res_ordered[res_ordered$Regulation == "Down", ], 10)
 top_genes <- rbind(top_up, top_down)
 
-volcano_plot <- ggplot(res_ordered, aes(x=logFC, y=-log10(get(pval_col)), colour=Regulation)) +
+volcano_plot <- ggplot(res_ordered, aes(x=log2FoldChange, y=-log10(get(pval_col)), colour=Regulation)) +
   geom_point(alpha=0.8, size=2.5) +
   geom_vline(xintercept=c(-lfc_thresh, lfc_thresh), lty=4, col="black", lwd=0.8) +
   geom_hline(yintercept=-log10(pval_cut), lty=4, col="black", lwd=0.8) +
@@ -358,9 +359,9 @@ if (nrow(sig_genes) > 0) {
 # ---------------------------------------------------------------------------
 # Summary JSON
 # ---------------------------------------------------------------------------
-sig <- which((res_ordered[[pval_col]] < pval_cut) & (abs(res_ordered$logFC) > lfc_thresh))
-up  <- sig[res_ordered$logFC[sig] >  lfc_thresh]
-down <- sig[res_ordered$logFC[sig] < -lfc_thresh]
+sig <- which((res_ordered[[pval_col]] < pval_cut) & (abs(res_ordered$log2FoldChange) > lfc_thresh))
+up  <- sig[res_ordered$log2FoldChange[sig] >  lfc_thresh]
+down <- sig[res_ordered$log2FoldChange[sig] < -lfc_thresh]
 
 summary_list <- list(
   method          = method,
@@ -379,7 +380,6 @@ if (has_jsonlite) {
   writeLines(jsonlite::toJSON(summary_list, auto_unbox=TRUE, pretty=TRUE),
            file.path(outdir, "5_summary.json"))
 } else {
-  # Base R fallback: write as pretty-printed list
   sink(file.path(outdir, "5_summary.json"))
   str(summary_list)
   sink()
@@ -389,98 +389,74 @@ cat("Summary written to:", file.path(outdir, "5_summary.json"), "\n")
 # ---------------------------------------------------------------------------
 # #9 Reproducible analysis code
 # ---------------------------------------------------------------------------
+cat("Generating reproducible analysis code...\n")
 code_lines <- c(
   "#!/usr/bin/env Rscript",
-  "# Reproducible analysis code for this diffexp run",
-  "# Generated: " %+% Sys.time(),
+  paste("# Generated:", Sys.time()),
   "",
   "suppressPackageStartupMessages({",
-  if (method=="deseq2") '  library(DESeq2)' else '  library(limma)',
-  "  library(ggplot2)",
-  "  library(ggrepel)",
-  "  library(pheatmap)",
-  "  library(FactoMineR)",
-  "  library(factoextra)",
+  if (method=="deseq2") "  library(DESeq2)" else "  library(limma)",
+  "  library(ggplot2); library(ggrepel); library(pheatmap)",
+  "  library(FactoMineR); library(factoextra)",
   "})",
   "",
-  "# --- Parameters ---",
   sprintf('method <- "%s"', method),
   sprintf('input_file <- "%s"', input_file),
   sprintf('metadata_file <- "%s"', metadata_file),
-  sprintf('design_formula <- %s', deparse(design_formula)),
-  sprintf('contrast_var <- "%s"', contrast_var),
-  sprintf('treat <- "%s"', treat),
-  sprintf('ctrl <- "%s"', ctrl),
+  sprintf('treat <- "%s"; ctrl <- "%s"', treat, ctrl),
   sprintf('outdir <- "%s"', outdir),
-  sprintf('pval_cut <- %s', pval_cut),
-  sprintf('use_padj <- %s', use_padj),
-  sprintf('lfc_thresh <- %s', lfc_thresh),
+  sprintf('pval_cut <- %s; lfc_thresh <- %s; use_padj <- %s', pval_cut, lfc_thresh, use_padj),
   "",
-  "# --- Read data ---",
-  sprintf('expr_data <- read_data("%s")', input_file),
-  sprintf('metadata <- read_data("%s")', metadata_file),
-  "",
-  "# --- DE analysis ---",
-  if (method=="deseq2") {
-    c(
-      'counts <- as.matrix(expr_data); storage.mode(counts) <- "integer"',
-      'dds <- DESeqDataSetFromMatrix(countData=counts, colData=metadata, design=design_formula)',
-      'dds <- dds[rowSums(counts(dds)) > 0, ]',
-      'dds <- DESeq(dds)',
-      'res <- as.data.frame(results(dds))',
-      'res$gene_id <- rownames(res); res$logFC <- res$log2FoldChange; res$AveExpr <- res$baseMean',
-      'vsd <- if(nrow(dds)>=50) vst(dds,blind=TRUE) else varianceStabilizingTransformation(dds,blind=TRUE)',
-      'expr_transformed <- assay(vsd)'
-    )
-  } else {
-    c(
-      'design_mat <- model.matrix(design_formula, data=metadata)',
-      'fit <- lmFit(expr_data, design_mat)',
-      'fit <- eBayes(fit, trend=TRUE)',
-      'res <- as.data.frame(topTable(fit, coef=tail(grep(contrast_var,colnames(design_mat)),1), number=Inf, adjust.method="BH"))',
-      'res$gene_id <- rownames(res)',
-      'expr_transformed <- as.matrix(expr_data)'
-    )
-  },
-  "",
-  "# --- Filter DEGs ---",
-  sprintf('pval_col <- if(use_padj) "adj.P.Val" else "pvalue"'),
-  'res$Regulation <- "ns"',
-  'res$Regulation[(res[[pval_col]] < pval_cut) & (res$logFC < -lfc_thresh)] <- "Down"',
-  'res$Regulation[(res[[pval_col]] < pval_cut) & (res$logFC >  lfc_thresh)] <- "Up"',
-  'res$FoldChange <- 2^res$logFC',
-  "",
-  "# --- Save results ---",
-  sprintf('write.table(res, "%s", row.names=FALSE, sep="\\t", quote=FALSE)', result_file),
-  "",
-  "# --- PCA ---",
-  'pca_plot <- ...',  # placeholder
-  sprintf('ggsave("%s", pca_plot, width=5.5, height=4, dpi=150)', file.path(outdir,"1_PCA.png")),
-  sprintf('ggsave("%s", pca_plot, width=5.5, height=4)', file.path(outdir,"1_PCA.pdf")),
-  "",
-  "# --- Volcano ---",
-  sprintf('ggsave("%s", volcano_plot, width=8, height=6, dpi=150)', file.path(outdir,"2_volcano.png")),
-  sprintf('ggsave("%s", volcano_plot, width=8, height=6)', file.path(outdir,"2_volcano.pdf")),
-  "",
-  "# --- Summary ---",
-  sprintf('if (has_jsonlite) {
-  writeLines(jsonlite::toJSON(summary_list, auto_unbox=TRUE, pretty=TRUE), "%s")',
-          file.path(outdir,"5_summary.json"))
-)
-
-# Build complete code string
-code_str <- paste(code_lines, collapse="\n")
-# Replace placeholder with actual PCA code
-pca_code <- c(
+  "# --- PCA plot ---",
   "pca_data <- as.data.frame(t(expr_transformed))",
   "data.pca <- PCA(pca_data, graph=FALSE)",
-  sprintf('group_colors <- c(%s)',
-          paste(sprintf('"%s"="%s"', names(group_colors), group_colors), collapse=", ")),
-  sprintf('pca_plot <- fviz_pca_ind(data.pca, geom.ind=%s, col.ind=metadata[[contrast_var]], palette=group_colors, addEllipses=TRUE, repel=TRUE) + theme_bw() + ggtitle("%s vs %s")',
-          deparse(pca_geom), treat, ctrl)
+  sprintf("group_colors <- c(%s)", paste(sprintf('"%s"="%s"', names(group_colors), group_colors), collapse=", ")),
+  sprintf("group_list <- metadata[['%s']]", contrast_var),
+  sprintf("pca_plot <- fviz_pca_ind(data.pca, geom.ind=%s, col.ind=group_list, palette=group_colors, addEllipses=TRUE, repel=TRUE) + theme_bw() + ggtitle('%s vs %s')", deparse(pca_geom), treat, ctrl),
+  sprintf("ggsave('%s', pca_plot, width=5.5, height=4, dpi=150)", file.path(outdir,"1_PCA.png")),
+  sprintf("ggsave('%s', pca_plot, width=5.5, height=4)", file.path(outdir,"1_PCA.pdf")),
+  "",
+  "# --- Volcano plot ---",
+  "up_count <- sum(res$Regulation == 'Up')",
+  "down_count <- sum(res$Regulation == 'Down')",
+  "top_up <- head(res[res$Regulation == 'Up', ], 10)",
+  "top_down <- head(res[res$Regulation == 'Down', ], 10)",
+  "top_genes <- rbind(top_up, top_down)",
+  sprintf("pval_col <- if(use_padj) 'adj.P.Val' else 'pvalue'"),
+  "volcano_plot <- ggplot(res, aes(x=log2FoldChange, y=-log10(get(pval_col)), colour=Regulation)) +",
+  "  geom_point(alpha=0.8, size=2.5) +",
+  "  geom_vline(xintercept=c(-lfc_thresh, lfc_thresh), lty=4, col='black') +",
+  "  geom_hline(yintercept=-log10(pval_cut), lty=4, col='black') +",
+  sprintf("  labs(title='%s vs %s', x='log2 Fold Change') +", treat, ctrl),
+  "  theme_bw() + scale_color_manual(values=c('Down'='#194E7A','ns'='#BCBCBC','Up'='#CA2C2C')) +",
+  "  geom_text_repel(data=top_genes, aes(label=gene_id), size=4, show.legend=FALSE) +",
+  "  theme(legend.title=element_blank())",
+  sprintf("ggsave('%s', volcano_plot, width=8, height=6, dpi=150)", file.path(outdir,"2_volcano.png")),
+  sprintf("ggsave('%s', volcano_plot, width=8, height=6)", file.path(outdir,"2_volcano.pdf")),
+  "",
+  "# --- Heatmap ---",
+  "sig_genes <- res[res$Regulation %in% c('Up','Down'), ]",
+  "if (nrow(sig_genes) >= 2) {",
+  "  selected <- c(head(sig_genes[sig_genes$Regulation=='Up','gene_id'],10),",
+  "               head(sig_genes[sig_genes$Regulation=='Down','gene_id'],10))",
+  "  hm_data <- expr_transformed[selected, , drop=FALSE]",
+  sprintf("  annot_col <- data.frame(row.names=colnames(hm_data), %s=metadata[colnames(hm_data),'%s'])", contrast_var, contrast_var),
+  sprintf("  hm_color_list <- list(); hm_color_list[['%s']] <- group_colors", contrast_var),
+  sprintf("  pdf('%s', width=8, height=6)", file.path(outdir,"4_heatmap.pdf")),
+  "  pheatmap(hm_data, scale='row', annotation_col=annot_col, annotation_colors=hm_color_list, cluster_rows=TRUE, cluster_cols=TRUE, show_rownames=TRUE, show_colnames=FALSE, border_color='black', color=colorRampPalette(c('#194E7A','white','#CA2C2C'))(50))",
+  "  dev.off()",
+  sprintf("  png('%s', width=8, height=6, units='in', res=150)", file.path(outdir,"4_heatmap.png")),
+  "  pheatmap(hm_data, scale='row', annotation_col=annot_col, annotation_colors=hm_color_list, cluster_rows=TRUE, cluster_cols=TRUE, show_rownames=TRUE, show_colnames=FALSE, border_color='black', color=colorRampPalette(c('#194E7A','white','#CA2C2C'))(50))",
+  "  dev.off()",
+  "}",
+  "",
+  "# --- Summary ---",
+  "sig <- which((res[[pval_col]] < pval_cut) & (abs(res$log2FoldChange) > lfc_thresh))",
+  "summary_list <- list(method=method, treatment=treat, control=ctrl, pvalue_cutoff=pval_cut, lfc_threshold=lfc_thresh, total_genes=nrow(res), significant=length(sig), upregulated=sum(res$log2FoldChange[sig] > lfc_thresh), downregulated=sum(res$log2FoldChange[sig] < -lfc_thresh))",
+  sprintf("if (requireNamespace('jsonlite', quietly=TRUE)) writeLines(jsonlite::toJSON(summary_list, auto_unbox=TRUE, pretty=TRUE), '%s')", file.path(outdir,"5_summary.json")),
+  paste0("cat('Analysis complete\n')")
 )
-code_str <- sub("pca_plot <- \\.\\.\\.", paste(pca_code, collapse="\n"), code_str, fixed=TRUE)
-
+code_str <- paste(code_lines, collapse="\n")
 code_path <- file.path(outdir, "6_analysis_code.R")
 writeLines(code_str, code_path)
 cat("Reproducible code written to:", code_path, "\n")
@@ -491,87 +467,45 @@ cat("Reproducible code written to:", code_path, "\n")
 report_lines <- c(
   "# Differential Expression Analysis Report",
   "",
-  "## Analysis Background",
-  sprintf("This analysis compares **%s** (treatment) vs **%s** (control) using **%s**.",
-          treat, ctrl, method_label),
-  sprintf("Contrast variable: `%s`", contrast_var),
-  sprintf("Design formula: `%s`", deparse(design_formula)),
+  sprintf("## Analysis: %s vs %s (%s)", treat, ctrl, method_label),
+  sprintf("Contrast: %s | Design: %s", contrast_var, deparse(design_formula)),
   "",
-  "## Data Summary",
-  sprintf("- Total genes analyzed: %d", nrow(res_ordered)),
-  sprintf("- Significant DEGs (%s < %.3f, |log2FC| > %.2f): **%d**",
-          pval_label, pval_cut, lfc_thresh, length(sig)),
-  sprintf("  - Upregulated in %s: %d", treat, length(up)),
-  sprintf("  - Downregulated in %s: %d", ctrl, length(down)),
-  "",
-  "## Parameters",
-  sprintf("| Parameter | Value |"),
-  sprintf("|---|---|"),
-  sprintf("| Method | %s |", method_label),
-  sprintf("| Treatment group | %s |", treat),
-  sprintf("| Control group | %s |", ctrl),
-  sprintf("| %s cutoff | %.3f |", pval_label, pval_cut),
-  sprintf("| |log2FC| threshold | %.2f (%.1f-fold) |", lfc_thresh, 2^lfc_thresh),
-  if (use_padj) "| Note | Using **adjusted p-value** (padj/BH) instead of raw p-value |" else "",
-  "",
-  "## Method",
-  if (method == "deseq2") {
-    c("DESeq2 performs median-of-ratios normalization, estimates dispersion,",
-      "and uses the Wald test for differential expression. Suitable for raw",
-      "RNA-seq count data.")
-  } else {
-    c("limma uses linear models with empirical Bayes moderation (eBayes).",
-      "Suitable for microarray data or pre-normalized expression matrices.")
-  },
+  sprintf("- Total genes: %d", nrow(res_ordered)),
+  sprintf("- Significant DEGs: **%d**", length(sig)),
+  sprintf("  - Upregulated: %d", length(up)),
+  sprintf("  - Downregulated: %d", length(down)),
+  sprintf("- P-value cutoff: %.3f (%s)", pval_cut, pval_label),
+  sprintf("- |log2FC| threshold: %.2f", lfc_thresh),
   "",
   "## Output Files",
-  sprintf("| # | File | Description |"),
-  sprintf("|---|---|---|"),
-  sprintf("| 1 | 1_PCA.png/pdf | PCA sample clustering |"),
-  sprintf("| 2 | 2_volcano.png/pdf | Volcano plot |"),
-  sprintf("| 3 | 3_%s_results.tsv | Full DEG results table |", method),
-  sprintf("| 4 | 4_heatmap.png/pdf | Top DEG heatmap |"),
-  sprintf("| 5 | 5_summary.json | Summary statistics |"),
-  sprintf("| 6 | 6_analysis_code.R | Reproducible analysis code |"),
-  sprintf("| 7 | 7_report.html | This report |"),
+  "| # | File | Description |",
+  "|---|---|---|",
+  "| 1 | 1_PCA.png/pdf | PCA plot |",
+  "| 2 | 2_volcano.png/pdf | Volcano plot |",
+  sprintf("| 3 | 3_%s_results.tsv | Full DEG results |", method),
+  "| 4 | 4_heatmap.png/pdf | Heatmap |",
+  "| 5 | 5_summary.json | Summary stats |",
+  "| 6 | 6_analysis_code.R | Reproducible code |",
+  "| 7 | 7_report.html/md | This report |",
   "",
-  "## Discussion",
-  sprintf("The analysis identified **%d** differentially expressed genes between %s and %s.",
-          length(sig), treat, ctrl),
-  if (length(sig) > 0) {
-    c("The top upregulated genes may indicate activated pathways in the treatment group.",
-      "The downregulated genes may represent suppressed functions.",
-      "Consider running GO/KEGG enrichment analysis on the significant DEGs",
-      "to understand the biological functions and pathways involved.")
-  } else {
-    "No genes passed the significance threshold. Consider relaxing the cutoff."
-  },
+  "## Session Info",
   "",
-  paste("Report generated:", Sys.time())
+  "```",
+  paste(capture.output(sessionInfo()), collapse="\n"),
+  "```"
 )
 
 report_md <- paste(unlist(report_lines), collapse="\n")
 report_md_path <- file.path(outdir, "7_report.md")
 writeLines(report_md, report_md_path)
 
-# Try converting to HTML if rmarkdown is available
 if (has_rmarkdown) {
   tryCatch({
     rmarkdown::render(report_md_path, output_format="html_document",
-                      output_file="7_report.html", output_dir=outdir,
-                      quiet=TRUE)
+                      output_file="7_report.html", output_dir=outdir, quiet=TRUE)
     cat("HTML report written to:", file.path(outdir, "7_report.html"), "\n")
-  }, error=function(e) {
-    cat("rmarkdown render failed:", e$message, "\n")
-    cat("Markdown report available at:", report_md_path, "\n")
-  })
+  }, error=function(e) cat("rmarkdown failed, MD report at:", report_md_path, "\n"))
 } else {
-  cat("Note: Install 'rmarkdown' package for HTML report generation.\n")
   cat("Markdown report written to:", report_md_path, "\n")
 }
 
-# ---------------------------------------------------------------------------
-# Session info
-# ---------------------------------------------------------------------------
-cat("\n--- Session Info ---\n")
-sessionInfo()

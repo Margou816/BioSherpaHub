@@ -18,45 +18,45 @@ LOCAL_HUB = Path(__file__).resolve().parent.parent.parent / "biosherpa-hub"
 LOCAL_REGISTRY = Path(__file__).resolve().parent.parent.parent / "registry" / "registry.yaml"
 CACHE_ROOT = Path.home() / ".biosherpa" / "cache"
 AGENT_TIMEOUT = 600
+_registry_cache = None
+_registry_cache_ts = 0.0
+def _check_dependencies():
+    """Verify required binaries are available at startup. Uses shared.find_rscript."""
+    try:
+        hub = Path(__file__).resolve().parent.parent.parent / "biosherpa-hub"
+        sys.path.insert(0, str(hub))
+        from shared import find_rscript
+        find_rscript()
+    except FileNotFoundError as e:
+        return [str(e)]
+    except Exception as e:
+        return [f"Rscript check failed: {e}"]
+    return []
+
 
 _LOCAL = bool(os.environ.get("BIOSHERPA_LOCAL", ""))
 
 
-def _check_dependencies():
-    """Verify required binaries are available at startup. Returns list of issues."""
-    issues = []
-    # Check Python
-    if not shutil.which(sys.executable):
-        issues.append(f"Python not found at: {sys.executable}")
-    # Check Rscript
-    import shutil as _shutil
-    rscript = _shutil.which("Rscript") or _shutil.which("Rscript.exe")
-    if not rscript:
-        # Search common R locations
-        for drive in ["C:", "D:", "G:", "F:"]:
-            rdir = Path(drive) / "Program Files" / "R"
-            if rdir.is_dir():
-                for ver in sorted(os.listdir(str(rdir)), reverse=True):
-                    rs = rdir / ver / "bin" / "Rscript.exe"
-                    if rs.is_file():
-                        rscript = str(rs)
-                        break
-                if rscript:
-                    break
-    if not rscript:
-        issues.append("Rscript not found. Install R and ensure R\\bin is on PATH or set RSCRIPT_PATH.")
-    return issues
-
-
 
 def fetch_registry() -> List[Dict[str, Any]]:
+    global _registry_cache, _registry_cache_ts
+    import time
+    now = time.time()
+    if _registry_cache is not None and (now - _registry_cache_ts) < 60:
+        return _registry_cache
     if _LOCAL and LOCAL_REGISTRY.is_file():
         import yaml
-        return yaml.safe_load(LOCAL_REGISTRY.read_text(encoding="utf-8")).get("entries", [])
+        entries = yaml.safe_load(LOCAL_REGISTRY.read_text(encoding="utf-8")).get("entries", [])
+        _registry_cache = entries
+        _registry_cache_ts = now
+        return entries
     import yaml
     with urllib.request.urlopen(REGISTRY_URL, timeout=30) as r:
         data = yaml.safe_load(r.read().decode("utf-8"))
-    return data.get("entries", [])
+    entries = data.get("entries", [])
+    _registry_cache = entries
+    _registry_cache_ts = time.time()
+    return entries
 
 
 def cache_dir(aid: str, ver: str) -> Path:

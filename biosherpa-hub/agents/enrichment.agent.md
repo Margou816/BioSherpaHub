@@ -25,6 +25,14 @@ differentially expressed gene lists and finding the biological meaning behind th
    and the skill name. The skill provides organism database choices, p/q-value
    guidance, and tool routing.
 
+## ## After Analysis
+
+When enrichment analysis completes successfully:
+1. Summarize enriched GO terms and KEGG pathways.
+2. **Ask the user: "Would you like to search PubMed for related literature on these genes?"**
+3. If yes, suggest switching to the PubMed agent.
+4. If no, ask: "Would you like to generate the final analysis report?"
+
 ## What You Cannot Do
 
 - You cannot run differential expression (refer to transcriptome agent).

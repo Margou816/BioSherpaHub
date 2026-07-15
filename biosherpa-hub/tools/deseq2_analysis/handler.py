@@ -11,90 +11,14 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+import sys as _sys
+_HUB = __import__("pathlib").Path(__file__).resolve().parent.parent.parent
+_sys.path.insert(0, str(_HUB))
+from shared import find_rscript
+del _sys
 
 
-def _find_rscript():
-    """Find a working Rscript. Collects ALL candidates, then tests each.
-    Priority: explicit RSCRIPT_PATH, then PATH, Registry, disk scan, R_HOME.
-    Each candidate is verified with --version before being returned."""
-    import subprocess as _sp
-    import shutil as _sh
 
-    def _test(rscript):
-        """Smoke test: does this Rscript actually run?"""
-        try:
-            r = _sp.run([rscript, "--version"], capture_output=True, timeout=15)
-            return r.returncode == 0
-        except Exception:
-            return False
-
-    candidates = []
-
-    # 1. Explicit RSCRIPT_PATH
-    env_r = os.environ.get("RSCRIPT_PATH", "")
-    if env_r and os.path.isfile(env_r) and env_r not in candidates:
-        candidates.append(env_r)
-
-    # 2. PATH (user active R, highest implicit priority)
-    found = _sh.which("Rscript") or _sh.which("Rscript.exe")
-    if found and found not in candidates:
-        candidates.append(found)
-
-    # 3. Windows Registry (all hives, both bitness)
-    try:
-        import winreg
-        for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
-            for key_path in [r"SOFTWARE\R-core\R", r"SOFTWARE\WOW6432Node\R-core\R"]:
-                try:
-                    with winreg.OpenKey(hive, key_path) as key:
-                        ip, _ = winreg.QueryValueEx(key, "InstallPath")
-                        rs = os.path.join(ip, "bin", "Rscript.exe")
-                        if os.path.isfile(rs) and rs not in candidates:
-                            candidates.append(rs)
-                except (OSError, FileNotFoundError):
-                    continue
-    except ImportError:
-        pass
-
-    # 4. Disk scan: all drives
-    import string as _str
-    for drive in [d + ":" for d in _str.ascii_uppercase if os.path.exists(d + ":")]:
-        for prog in ["Program Files", "Program Files (x86)"]:
-            rdir = os.path.join(drive, os.sep, prog, "R")
-            if not os.path.isdir(rdir):
-                continue
-            try:
-                for ver in sorted(os.listdir(rdir), reverse=True):
-                    rs = os.path.join(rdir, ver, "bin", "Rscript.exe")
-                    if os.path.isfile(rs) and rs not in candidates:
-                        candidates.append(rs)
-            except OSError:
-                continue
-
-    # 5. R_HOME
-    r_home = os.environ.get("R_HOME", "")
-    if r_home:
-        rs = os.path.join(r_home, "bin", "Rscript.exe")
-        if os.path.isfile(rs) and rs not in candidates:
-            candidates.append(rs)
-
-    if not candidates:
-        raise FileNotFoundError(
-            "Rscript.exe not found. Install R from https://cran.r-project.org"
-        )
-
-    # Test each candidate, return first working one
-    failed = []
-    for rs in candidates:
-        if _test(rs):
-            return rs
-        failed.append(rs)
-
-    raise FileNotFoundError(
-        "No working R installation found. Tested candidates:\n" +
-        "\n".join("  [FAILED] " + rs for rs in failed) +
-        "\n\nAll failed --version check. Check R installation integrity."
-    )
 from typing import Dict, List, Optional
 
 # ---------------------------------------------------------------------------
@@ -111,7 +35,6 @@ _EXPECTED_OUTPUTS = [
     "ma.png",
     "summary.json",
 ]
-
 
 # ---------------------------------------------------------------------------
 # Validation
@@ -149,7 +72,6 @@ def validate_inputs(
 
     return {"counts": counts, "metadata": metadata, "output": output}
 
-
 def _check_counts_header(path: Path) -> None:
     """Verify the counts file (CSV or TSV) has at least a gene-id column + one sample column."""
     with path.open("r", encoding="utf-8") as fh:
@@ -162,7 +84,6 @@ def _check_counts_header(path: Path) -> None:
             f"expected gene-id column + at least one sample column. Detected delimiter: {repr(delim)}"
         )
 
-
 def _check_metadata_header(path: Path) -> None:
     """Verify the metadata file (CSV or TSV) has at least a sample-id column + one grouping column."""
     with path.open("r", encoding="utf-8") as fh:
@@ -174,7 +95,6 @@ def _check_metadata_header(path: Path) -> None:
             f"Metadata file header has only {len(cols)} column(s); "
             "expected sample-id column + at least one grouping column."
         )
-
 
 # ---------------------------------------------------------------------------
 # Command building
@@ -209,7 +129,6 @@ def build_command(
         "--lfc-threshold", str(lfc_threshold),
     ]
 
-
 # ---------------------------------------------------------------------------
 # Execution
 # ---------------------------------------------------------------------------
@@ -225,7 +144,6 @@ def run_analysis(
         text=False,
         timeout=timeout
     )
-
 
 # ---------------------------------------------------------------------------
 # Output collection
@@ -256,7 +174,6 @@ def collect_outputs(output_dir: Path) -> Dict[str, Path]:
                 pass
 
     return result
-
 
 # ---------------------------------------------------------------------------
 # CLI entry point
@@ -373,7 +290,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         if exc.stderr:
             print(exc.stderr.decode("utf-8", errors="replace"), file=sys.stderr)
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())
