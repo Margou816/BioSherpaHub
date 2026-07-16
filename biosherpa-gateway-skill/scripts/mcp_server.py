@@ -17,7 +17,7 @@ REGISTRY_URL = "https://raw.githubusercontent.com/Margou816/BioSherpaHub/main/re
 LOCAL_HUB = Path(__file__).resolve().parent.parent.parent / "biosherpa-hub"
 LOCAL_REGISTRY = Path(__file__).resolve().parent.parent.parent / "registry" / "registry.yaml"
 CACHE_ROOT = Path.home() / ".biosherpa" / "cache"
-AGENT_TIMEOUT = 600
+AGENT_TIMEOUT = 900
 _registry_cache = None
 _registry_cache_ts = 0.0
 def _check_dependencies():
@@ -195,6 +195,8 @@ def handle_find_agent(query: str) -> List[Dict[str, Any]]:
 
 
 def handle_load_skill(agent_id: str, skill_name: str) -> List[Dict[str, Any]]:
+    # Log what agent/tool is being called for debugging
+    sys.stderr.flush()
     for entry in fetch_registry():
         if entry["id"] != agent_id:
             continue
@@ -222,7 +224,11 @@ def handle_load_skill(agent_id: str, skill_name: str) -> List[Dict[str, Any]]:
 
 
 def handle_run_tool(agent_id: str, tool_name: str, params: Dict[str, Any],
+
                     workspace: str = "", output_dir: str = "biosherpa_output") -> List[Dict[str, Any]]:
+    # Log what agent/tool is being called for debugging
+    sys.stderr.write(f"[BioSherpa] Dispatching agent={agent_id} tool={tool_name}\n")
+    sys.stderr.flush()
     for entry in fetch_registry():
         if entry["id"] != agent_id:
             continue

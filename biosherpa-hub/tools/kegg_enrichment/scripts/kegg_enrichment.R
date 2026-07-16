@@ -76,14 +76,44 @@ if (conv_rate < 30) {
   cat("WARNING: Low conversion rate. Check organism code and gene symbols.\n")
 }
 
-# --- Run KEGG enrichment ---
+# --- Run KEGG enrichment with retry (KEGG API may be unreachable in some regions) ---
 cat(sprintf("Running KEGG enrichment (organism=%s)...\n", opts$organism))
-ekegg <- tryCatch(
-  enrichKEGG(gene=entrez_ids, organism=opts$organism,
-             pvalueCutoff=opts[["pvalue-cutoff"]],
-             qvalueCutoff=opts[["qvalue-cutoff"]]),
-  error=function(e) { cat(sprintf("KEGG enrichment failed: %s\n", e$message)); return(NULL) }
-)
+max_attempts <- 3
+ekegg <- NULL
+for (attempt in 1:max_attempts) {
+  cat(sprintf("  KEGG attempt %d/%d...\n", attempt, max_attempts))
+  ekegg <- tryCatch(
+    enrichKEGG(gene=entrez_ids, organism=opts$organism,
+               pvalueCutoff=opts[["pvalue-cutoff"]],
+               qvalueCutoff=opts[["qvalue-cutoff"]]),
+    error=function(e) { cat(sprintf("  KEGG attempt %d failed: %s\n", attempt, e$message)); return(NULL) }
+  )
+  if (!is.null(ekegg)) break
+  if (attempt < max_attempts) {
+    delay <- attempt * 10
+    cat(sprintf("  Retrying in %ds... (KEGG API may be slow/unreachable)\n", delay))
+    Sys.sleep(delay)
+  }
+}
+
+# ReactomePA fallback if KEGG failed or returned no results
+if (is.null(ekegg) || (is.data.frame(ekegg) && nrow(ekegg) == 0)) {
+  cat("KEGG enrichment failed or returned no results.\n")
+  if (requireNamespace("ReactomePA", quietly=TRUE)) {
+    cat("Trying ReactomePA as fallback...\n")
+    ekegg <- tryCatch(
+      ReactomePA::enrichPathway(gene=entrez_ids, organism="human",
+                 pvalueCutoff=opts[["pvalue-cutoff"]],
+                 qvalueCutoff=opts[["qvalue-cutoff"]],
+                 readable=TRUE),
+      error=function(e) { cat(sprintf("ReactomePA failed: %s\n", e$message)); return(NULL) }
+    )
+    if (!is.null(ekegg)) cat("ReactomePA enrichment succeeded.\n")
+  } else {
+    cat("ReactomePA not installed. Install: BiocManager::install('ReactomePA')\n")
+    cat("Note: reactome.db is ~415MB and requires checkmate package.\n")
+  }
+}
 
 # --- Save results ---
 dir.create(opts[["output-dir"]], showWarnings=FALSE, recursive=TRUE)

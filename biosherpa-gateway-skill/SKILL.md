@@ -42,6 +42,16 @@ Bioinformatics analysis platform with a three-level Agent-Skill-Tool architectur
 | transcriptome | Bulk RNA-seq / microarray differential expression | diffexp (DESeq2 + limma)     || pubmed | PubMed literature search | pubmed |
 
 
+## Network Notes
+
+KEGG enrichment requires downloading pathway data from KEGG servers.
+In regions where KEGG is unreachable (e.g., mainland China), the analysis
+will retry 3 times with increasing delays, then fall back to ReactomePA
+(local database, no network needed).
+
+If both KEGG and Reactome fail, the tool reports which genes could not be
+mapped and suggests manual pathway lookup.
+
 ## Windows Notes
 
 BioSherpa on Windows requires pre-compiled R packages. Source compilation
@@ -57,4 +67,4 @@ and only the Markdown report is produced.
 - **python** -- for the MCP server and agent execution
 - **Rscript** -- for R-based analysis tools
 - **pyyaml** -- for registry parsing (`pip install pyyaml`)
-- **R packages** -- DESeq2, limma, ggplot2, ggrepel, pheatmap, FactoMineR, factoextra, jsonlite, scales, clusterProfiler, org.Hs.eg.db, enrichplot, optparse (in R_LIBS_USER). Optional: rmarkdown, knitr (for HTML reports)
+- **R packages** -- DESeq2, limma, ggplot2, ggrepel, pheatmap, FactoMineR, factoextra, jsonlite, scales, clusterProfiler, org.Hs.eg.db, enrichplot, optparse, checkmate, ReactomePA, reactome.db (in R_LIBS_USER). Optional: rmarkdown, knitr (for HTML reports)
