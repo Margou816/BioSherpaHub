@@ -30,19 +30,21 @@ if (ext == "csv") {
   deg <- read.delim(opts[["deg-file"]], stringsAsFactors=FALSE, check.names=FALSE)
 }
 
-# --- Determine input mode ---
-cat(sprintf("Input: %d rows x %d cols\n", nrow(deg), ncol(deg)))
-cat(sprintf("Columns: %s\n", paste(colnames(deg), collapse=", ")))
-is_gene_list <- ncol(deg) == 1 || !"log2FoldChange" %in% colnames(deg) && !any(c("pvalue","padj") %in% colnames(deg))
-if (is_gene_list) {
-  gene_symbols <- na.omit(as.character(deg[[1]]))
-  gene_symbols <- gene_symbols[gene_symbols != ""]
-  cat(sprintf("Gene list mode: %d symbols loaded\n", length(gene_symbols)))
-} else {
-  fc_col <- intersect("log2FoldChange", colnames(deg))
-  if (is.na(fc_col)) stop("No fold-change column found (need logFC or log2FoldChange)")
-  pval_col <- intersect(c("pvalue", "padj"), colnames(deg))[1]
-  if (is.na(pval_col)) stop("No p-value column found (need pvalue or padj)")
+  # --- Determine input mode ---
+  cat(sprintf("Input: %d rows x %d cols\n", nrow(deg), ncol(deg)))
+  cat(sprintf("Columns: %s\n", paste(colnames(deg), collapse=", ")))
+  is_gene_list <- ncol(deg) == 1 || !"log2FoldChange" %in% colnames(deg) && !any(c("pvalue","padj") %in% colnames(deg))
+  if (is_gene_list) {
+    gene_symbols <- na.omit(as.character(deg[[1]]))
+    gene_symbols <- gene_symbols[gene_symbols != ""]
+    cat(sprintf("Gene list mode: %d symbols loaded\n", length(gene_symbols)))
+  } else {
+    fc_col <- "log2FoldChange"
+    if (!fc_col %in% colnames(deg))
+      stop("No fold-change column found (need logFC or log2FoldChange)")
+    pvals <- intersect(c("pvalue", "padj"), colnames(deg))
+    if (length(pvals) == 0) stop("No p-value column found (need pvalue or padj)")
+    pval_col <- pvals[1]
   sig <- deg[!is.na(deg[[pval_col]]) & deg[[pval_col]] < opts[["pvalue-cutoff"]] &
              !is.na(deg[[fc_col]]) & abs(deg[[fc_col]]) > 0.5, ]
   gene_symbols <- na.omit(as.character(sig[[1]]))
@@ -56,9 +58,27 @@ if (length(gene_symbols) < 3) {
 }
 
 # --- SYMBOL to ENTREZID conversion ---
-suppressPackageStartupMessages(library(org.Hs.eg.db))
+# KEGG organism code → OrgDb package mapping
+kegg_to_orgdb <- list(
+  hsa="org.Hs.eg.db", mmu="org.Mm.eg.db", rno="org.Rn.eg.db",
+  dre="org.Dr.eg.db", dme="org.Dm.eg.db", cel="org.Ce.eg.db",
+  sce="org.Sc.sgd.db", ssc="org.Ss.eg.db", bta="org.Bt.eg.db",
+  gga="org.Gg.eg.db", ath="org.At.tair.db"
+)
+orgdb_name <- kegg_to_orgdb[[opts$organism]]
+if (is.null(orgdb_name)) {
+  stop(sprintf("No OrgDb mapped for KEGG code '%s'. Supported: %s",
+               opts$organism, paste(names(kegg_to_orgdb), collapse=", ")))
+}
+cat(sprintf("Loading organism database: %s (KEGG: %s)\n", orgdb_name, opts$organism))
+if (!requireNamespace(orgdb_name, quietly=TRUE)) {
+  stop(sprintf("OrgDb package '%s' not installed. Install: BiocManager::install('%s')",
+               orgdb_name, orgdb_name))
+}
+suppressPackageStartupMessages(library(orgdb_name, character.only=TRUE))
+orgdb <- get(orgdb_name)
 entrez_result <- tryCatch(
-  bitr(gene_symbols, fromType="SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db),
+  bitr(gene_symbols, fromType="SYMBOL", toType="ENTREZID", OrgDb=orgdb),
   error=function(e) { cat(sprintf("bitr conversion failed: %s\n", e$message)); return(NULL) }
 )
 
@@ -126,7 +146,7 @@ if (is.null(ekegg)) {
   cat("KEGG enrichment produced no results (execution error).\n")
 } else if (nrow(ekegg) == 0) {
   file_n <- file_n + 1
-  csv_path <- file.path(out, sprintf("%d_kegg_enrichment.csv", file_n + 1))
+  csv_path <- file.path(out, sprintf("%d_kegg_enrichment.csv", file_n))
   write.csv(data.frame(Note="No enriched KEGG pathways found"), csv_path, row.names=FALSE)
   cat("KEGG enrichment: 0 pathways enriched.\n")
   cat(sprintf("  Input genes: %d, converted to ENTREZ: %d\n",
@@ -135,7 +155,7 @@ if (is.null(ekegg)) {
 } else {
   # CSV
   file_n <- file_n + 1
-  csv_path <- file.path(out, sprintf("%d_kegg_enrichment.csv", file_n + 1))
+  csv_path <- file.path(out, sprintf("%d_kegg_enrichment.csv", file_n))
   write.csv(as.data.frame(ekegg), csv_path, row.names=FALSE)
   # Bar plot (PDF + PNG)
   bp <- barplot(ekegg, showCategory=min(15, nrow(ekegg)),

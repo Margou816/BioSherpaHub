@@ -271,6 +271,7 @@ def handle_run_tool(agent_id: str, tool_name: str, params: Dict[str, Any],
                 pkg = download_agent(entry.get("repository", ""), entry["id"], entry["version"])
             runner = find_run_agent(pkg)
         # Merge output_dir from params if not explicitly passed at top level
+        outdir = Path(output_dir)
         if output_dir == "biosherpa_output" and "output_dir" in params:
             output_dir = str(params["output_dir"])
             outdir = Path(output_dir)
