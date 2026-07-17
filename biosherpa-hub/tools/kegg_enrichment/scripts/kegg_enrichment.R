@@ -31,6 +31,8 @@ if (ext == "csv") {
 }
 
 # --- Determine input mode ---
+cat(sprintf("Input: %d rows x %d cols\n", nrow(deg), ncol(deg)))
+cat(sprintf("Columns: %s\n", paste(colnames(deg), collapse=", ")))
 is_gene_list <- ncol(deg) == 1 || !"log2FoldChange" %in% colnames(deg) && !any(c("pvalue","padj") %in% colnames(deg))
 if (is_gene_list) {
   gene_symbols <- na.omit(as.character(deg[[1]]))

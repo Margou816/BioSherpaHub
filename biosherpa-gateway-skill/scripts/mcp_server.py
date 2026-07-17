@@ -17,7 +17,7 @@ REGISTRY_URL = "https://raw.githubusercontent.com/Margou816/BioSherpaHub/main/re
 LOCAL_HUB = Path(__file__).resolve().parent.parent.parent / "biosherpa-hub"
 LOCAL_REGISTRY = Path(__file__).resolve().parent.parent.parent / "registry" / "registry.yaml"
 CACHE_ROOT = Path.home() / ".biosherpa" / "cache"
-AGENT_TIMEOUT = 900
+AGENT_TIMEOUT = 1200
 _registry_cache = None
 _registry_cache_ts = 0.0
 def _check_dependencies():
@@ -240,7 +240,6 @@ def handle_run_tool(agent_id: str, tool_name: str, params: Dict[str, Any],
             if pkg is None:
                 pkg = download_agent(entry.get("repository", ""), entry["id"], entry["version"])
             runner = find_run_agent(pkg)
-        outdir = Path(output_dir)
         # Merge output_dir from params if not explicitly passed at top level
         if output_dir == "biosherpa_output" and "output_dir" in params:
             output_dir = str(params["output_dir"])
@@ -253,8 +252,6 @@ def handle_run_tool(agent_id: str, tool_name: str, params: Dict[str, Any],
             val = params.get(key, "")
             if val and not Path(val).is_absolute() and workspace:
                 params[key] = str(Path(workspace) / val)
-        # Recalculate outdir after potential param merge
-        outdir = Path(output_dir)
         if workspace and not outdir.is_absolute():
             outdir = Path(workspace) / outdir
         outdir.mkdir(parents=True, exist_ok=True)

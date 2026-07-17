@@ -20,4 +20,4 @@ PARAM_MAP = {
 
 def execute_tool(tool_name, params, r_libs_user=""):
     env = {"R_LIBS_USER": r_libs_user} if r_libs_user else None
-    return dispatch_tool("enrichment", TOOLS, PARAM_MAP, tool_name, params, timeout=600, env_extra=env)
+    return dispatch_tool("enrichment", TOOLS, PARAM_MAP, tool_name, params, timeout=1200, env_extra=env)
