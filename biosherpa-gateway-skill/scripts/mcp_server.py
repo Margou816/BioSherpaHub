@@ -21,17 +21,26 @@ AGENT_TIMEOUT = 1200
 _registry_cache = None
 _registry_cache_ts = 0.0
 def _check_dependencies():
-    """Verify required binaries are available at startup. Uses shared.find_rscript."""
-    try:
-        hub = Path(__file__).resolve().parent.parent.parent / "biosherpa-hub"
-        sys.path.insert(0, str(hub))
-        from shared import find_rscript
-        find_rscript()
-    except FileNotFoundError as e:
-        return [str(e)]
-    except Exception as e:
-        return [f"Rscript check failed: {e}"]
-    return []
+    """Verify Rscript is available. shared.py is checked by run_agent.py at runtime."""
+    issues = []
+    rscript = shutil.which("Rscript") or shutil.which("Rscript.exe")
+    if not rscript:
+        for drive in ["C:", "D:", "G:", "F:"]:
+            rdir = Path(drive) / "Program Files" / "R"
+            if rdir.is_dir():
+                try:
+                    for ver in sorted(os.listdir(str(rdir)), reverse=True):
+                        rs = rdir / ver / "bin" / "Rscript.exe"
+                        if rs.is_file():
+                            rscript = str(rs)
+                            break
+                except OSError:
+                    continue
+            if rscript:
+                break
+    if not rscript:
+        issues.append("Rscript not found. Install R and ensure R\bin is on PATH.")
+    return issues
 
 
 _LOCAL = bool(os.environ.get("BIOSHERPA_LOCAL", ""))
