@@ -178,6 +178,7 @@ if (is.null(ekegg)) {
   if (nrow(ekegg) >= 2) {
     tryCatch({
       file_n <- file_n + 1
+      ekegg@result$geneID <- as.character(ekegg@result$geneID)
       cp <- cnetplot(ekegg, showCategory=min(5, nrow(ekegg)))
       pdf(file.path(out, sprintf("%d_kegg_cnetplot.pdf", file_n)), width=12, height=10)
       print(cp)
@@ -208,7 +209,7 @@ code_lines <- c(
   'gene_symbols <- na.omit(as.character(deg[[1]]))',
   'entrez_result <- bitr(gene_symbols, fromType="SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db)',
   'entrez_ids <- unique(entrez_result$ENTREZID)',
-  'ekegg <- enrichKEGG(gene=entrez_ids, organism=organism, pvalueCutoff=%s, qvalueCutoff=%s)' % (opts[["pvalue-cutoff"]], opts[["qvalue-cutoff"]]),
+  sprintf('ekegg <- enrichKEGG(gene=entrez_ids, organism=organism, pvalueCutoff=%s, qvalueCutoff=%s)', opts[["pvalue-cutoff"]], opts[["qvalue-cutoff"]]),
   'if (!is.null(ekegg) && nrow(ekegg) > 0) {',
   '  write.csv(as.data.frame(ekegg), file.path(outdir, "kegg_enrichment.csv"), row.names=FALSE)',
   '  ggsave(file.path(outdir, "kegg_barplot.png"), barplot(ekegg, showCategory=15), width=10, height=7, dpi=150)',

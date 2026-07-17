@@ -150,25 +150,26 @@ if (.Platform$OS.type == "windows") {
    ggsave(file.path(out, sprintf("%d_go_%s_dotplot.png", file_n, ont_lower)),
           dp, width=10, height=7, dpi=150)
  
-   # —— cnetplot (gene-term network) ——
-   if (nrow(ego) >= 2) {
-     tryCatch({
-       file_n <- file_n + 1
-       cp <- cnetplot(ego, showCategory=min(5, nrow(ego)))
-       pdf(file.path(out, sprintf("%d_go_%s_cnetplot.pdf", file_n, ont_lower)),
-           width=12, height=10)
-       print(cp)
-       dev.off()
-       ggsave(file.path(out, sprintf("%d_go_%s_cnetplot.png", file_n, ont_lower)),
-              cp, width=12, height=10, dpi=150)
-     }, error=function(e) cat(sprintf("  GO %s cnetplot failed: %s\n", ont, e$message)))
- 
-     # —— chord diagram (circular cnetplot, requires circlize) ——
-     if (requireNamespace("circlize", quietly=TRUE)) {
-       tryCatch({
-         file_n <- file_n + 1
-         cp2 <- cnetplot(ego, showCategory=min(5, nrow(ego)),
-                         circular=TRUE, colorEdge=TRUE)
+  # —— cnetplot (gene-term network) ——
+  if (nrow(ego) >= 2) {
+    tryCatch({
+      file_n <- file_n + 1
+      ego@result$geneID <- as.character(ego@result$geneID)
+      cp <- cnetplot(ego, showCategory=min(5, nrow(ego)))
+      pdf(file.path(out, sprintf("%d_go_%s_cnetplot.pdf", file_n, ont_lower)),
+          width=12, height=10)
+      print(cp)
+      dev.off()
+      ggsave(file.path(out, sprintf("%d_go_%s_cnetplot.png", file_n, ont_lower)),
+             cp, width=12, height=10, dpi=150)
+    }, error=function(e) cat(sprintf("  GO %s cnetplot failed: %s\n", ont, e$message)))
+
+    # —— chord diagram (circular cnetplot, requires circlize) ——
+    if (requireNamespace("circlize", quietly=TRUE)) {
+      tryCatch({
+        file_n <- file_n + 1
+        cp2 <- cnetplot(ego, showCategory=min(5, nrow(ego)),
+                        circular=TRUE, colorEdge=TRUE)
          pdf(file.path(out, sprintf("%d_go_%s_chord.pdf", file_n, ont_lower)),
              width=10, height=10)
          print(cp2)
