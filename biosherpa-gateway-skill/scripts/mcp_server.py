@@ -94,8 +94,29 @@ def download_agent(repo: str, aid: str, ver: str) -> Path:
     src = items[0] if items else tmp
     shutil.copytree(src, dest)
     shutil.rmtree(tmp)
+    _verify_r_scripts(dest)
     return dest
 
+def _verify_r_scripts(pkg: Path):
+    """Check that .R files have correct shebangs, not Python content."""
+    issues = []
+    for rp, _, fs in os.walk(str(pkg)):
+        for fname in fs:
+            if not fname.endswith(".R"):
+                continue
+            fp = Path(rp) / fname
+            try:
+                first = fp.read_text(encoding="utf-8", errors="replace").split("\n")[0].strip()
+            except Exception:
+                continue
+            if first and "python" in first.lower() and "rscript" not in first.lower():
+                issues.append(str(fp.relative_to(pkg)))
+    if issues:
+        sys.stderr.write("[BioSherpa] WARNING: Corrupted R scripts (Python shebang):\n")
+        for i in issues:
+            sys.stderr.write(f"  - {i}\n")
+        sys.stderr.write("Clear cache (~/.biosherpa/cache/) and re-download.\n")
+        sys.stderr.flush()
 
 def find_run_agent(pkg: Path) -> Path:
     for rp, _, fs in os.walk(str(pkg)):

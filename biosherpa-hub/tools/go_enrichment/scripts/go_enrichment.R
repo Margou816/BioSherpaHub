@@ -1,394 +1,219 @@
-#!/usr/bin/env python
-"""BioSherpa MCP Server - Agent-Skill-Tool three-level navigation over JSON-RPC stdio.
-
-Exposes 3 MCP tools:
-  find_biosherpa_agent  -- search registry keywords, return agent.md persona
-  load_biosherpa_skill  -- load skill.md for a specific agent+skill
-  run_biosherpa_tool    -- execute a tool via the agent dispatcher
-
-Set BIOSHERPA_LOCAL=1 to use local F:\BioSherpa\RD files instead of GitHub.
-"""
-from __future__ import annotations
-import json, sys, subprocess, io, os, zipfile, urllib.request, shutil
-from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-REGISTRY_URL = "https://raw.githubusercontent.com/Margou816/BioSherpaHub/main/registry/registry.yaml"
-LOCAL_HUB = Path(__file__).resolve().parent.parent.parent / "biosherpa-hub"
-LOCAL_REGISTRY = Path(__file__).resolve().parent.parent.parent / "registry" / "registry.yaml"
-CACHE_ROOT = Path.home() / ".biosherpa" / "cache"
-AGENT_TIMEOUT = 1200
-_registry_cache = None
-_registry_cache_ts = 0.0
-def _check_dependencies():
-    """Verify required binaries are available at startup. Uses shared.find_rscript."""
-    try:
-        hub = Path(__file__).resolve().parent.parent.parent / "biosherpa-hub"
-        sys.path.insert(0, str(hub))
-        from shared import find_rscript
-        find_rscript()
-    except FileNotFoundError as e:
-        return [str(e)]
-    except Exception as e:
-        return [f"Rscript check failed: {e}"]
-    return []
-
-
-_LOCAL = bool(os.environ.get("BIOSHERPA_LOCAL", ""))
-
-
-
-def fetch_registry() -> List[Dict[str, Any]]:
-    global _registry_cache, _registry_cache_ts
-    import time
-    now = time.time()
-    if _registry_cache is not None and (now - _registry_cache_ts) < 60:
-        return _registry_cache
-    if _LOCAL and LOCAL_REGISTRY.is_file():
-        import yaml
-        entries = yaml.safe_load(LOCAL_REGISTRY.read_text(encoding="utf-8")).get("entries", [])
-        _registry_cache = entries
-        _registry_cache_ts = now
-        return entries
-    import yaml
-    with urllib.request.urlopen(REGISTRY_URL, timeout=30) as r:
-        data = yaml.safe_load(r.read().decode("utf-8"))
-    entries = data.get("entries", [])
-    _registry_cache = entries
-    _registry_cache_ts = time.time()
-    return entries
-
-
-def cache_dir(aid: str, ver: str) -> Path:
-    return CACHE_ROOT / f"{aid}@{ver}"
-
-
-def get_cached(aid: str, ver: str) -> Optional[Path]:
-    d = cache_dir(aid, ver)
-    return d if (d / "manifest.yaml").exists() else None
-
-
-def download_agent(repo: str, aid: str, ver: str) -> Path:
-    dest = cache_dir(aid, ver)
-    if dest.exists():
-        shutil.rmtree(dest)
-    tmp = CACHE_ROOT / f"dl_{aid}"
-    if tmp.exists():
-        shutil.rmtree(tmp)
-    tmp.mkdir(parents=True, exist_ok=True)
-    repo_url = "https://github.com/Margou816/BioSherpaHub"
-    zurl = f"{repo_url}/archive/refs/heads/main.zip"
-    with urllib.request.urlopen(zurl, timeout=120) as r:
-        with zipfile.ZipFile(io.BytesIO(r.read())) as zf:
-            zf.extractall(tmp)
-    items = list(tmp.iterdir())
-    src = items[0] if items else tmp
-    shutil.copytree(src, dest)
-    shutil.rmtree(tmp)
-    return dest
-
-
-def find_run_agent(pkg: Path) -> Path:
-    for rp, _, fs in os.walk(str(pkg)):
-        if "run_agent.py" in fs:
-            return Path(rp) / "run_agent.py"
-    raise FileNotFoundError(f"No run_agent.py in {pkg}")
-
-
-def _read_local_md(subdir: str, filename: str) -> Optional[Path]:
-    if not _LOCAL or not LOCAL_HUB.is_dir():
-        return None
-    path = LOCAL_HUB / subdir / filename
-    return path if path.is_file() else None
-
-
-def _find_md(pkg: Path, subdir: str, filename: str) -> Optional[Path]:
-    local = _read_local_md(subdir, filename)
-    if local:
-        return local
-    for rp, _, fs in os.walk(str(pkg)):
-        target = Path(rp) / subdir / filename
-        if target.is_file():
-            return target
-        direct = Path(rp) / filename
-        if direct.is_file() and subdir in str(rp):
-            return direct
-    for rp, _, fs in os.walk(str(pkg)):
-        if filename in fs:
-            return Path(rp) / filename
-    return None
-
-
-def build_tools() -> List[Dict[str, Any]]:
-    return [
-        {
-            "name": "find_biosherpa_agent",
-            "description": "Search for a BioSherpa agent matching your bioinformatics needs. Returns the agent persona (agent.md) which describes what the agent can do, available skills, and how to interact with it.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query matching agent keywords (e.g. 'rna-seq differential expression', 'go enrichment', 'pubmed literature')"}
-                },
-                "required": ["query"]
-            },
-        },
-        {
-            "name": "load_biosherpa_skill",
-            "description": "Load a skill module for a specific agent. The skill provides detailed parameter guidance, file format requirements, and tells you which tool to call.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "agent_id": {"type": "string", "description": "Agent id from find_biosherpa_agent result (e.g. 'transcriptome', 'enrichment', 'pubmed')"},
-                    "skill_name": {"type": "string", "description": "Skill name listed in the agent persona (e.g. 'deseq2', 'go', 'kegg', 'pubmed')"}
-                },
-                "required": ["agent_id", "skill_name"]
-            },
-        },
-        {
-            "name": "run_biosherpa_tool",
-            "description": "Execute a bioinformatics analysis tool. The tool name comes from the skill's documentation. Provide all required parameters from the skill's parameter table.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "agent_id": {"type": "string", "description": "Agent id (e.g. 'transcriptome', 'enrichment', 'pubmed')"},
-                    "tool_name": {"type": "string", "description": "Tool name from the skill documentation (e.g. 'deseq2_analysis', 'go_enrichment', 'kegg_enrichment', 'pubmed_search')"},
-                    "params": {"type": "object", "description": "Tool parameters as specified in the skill's parameter table"},
-                    "output_dir": {"type": "string", "description": "Output directory (default: biosherpa_output)"},
-                    "workspace": {"type": "string", "description": "OpenClaw workspace directory"}
-                },
-                "required": ["agent_id", "tool_name", "params"]
-            },
-        },
-    ]
-
-
-def handle_find_agent(query: str) -> List[Dict[str, Any]]:
-    entries = fetch_registry()
-    query_lower = query.lower()
-    matches = []
-    for entry in entries:
-        keywords = entry.get("keywords", [])
-        if any(kw in query_lower for kw in keywords):
-            matches.append(entry)
-    if not matches:
-        available = ", ".join(f"{e['id']} ({e.get('name','')})" for e in entries)
-        return [{"type": "text", "text": (
-            f"No agent found for query: '{query}'.\n\n"
-            f"Available agents: {available}\n\n"
-            f"Try a broader query or use one of the agent ids directly."
-        )}]
-    items: List[Dict[str, Any]] = []
-    for entry in matches:
-        if _LOCAL and LOCAL_HUB.is_dir():
-            pkg = LOCAL_HUB
-        else:
-            pkg = get_cached(entry["id"], entry["version"])
-            if pkg is None:
-                pkg = download_agent(entry.get("repository", ""), entry["id"], entry["version"])
-        agent_md = _find_md(pkg, "agents", f"{entry['id']}.agent.md")
-        if agent_md:
-            text = agent_md.read_text(encoding="utf-8", errors="replace")
-            items.append({"type": "text", "text": f"=== Agent: {entry['id']} ({entry.get('name','')}) v{entry.get('version','')} ===\n{text}"})
-        else:
-            items.append({"type": "text", "text": json.dumps(entry, indent=2)})
-    return items
-
-
-def handle_load_skill(agent_id: str, skill_name: str) -> List[Dict[str, Any]]:
-    # Log what agent/tool is being called for debugging
-    sys.stderr.flush()
-    for entry in fetch_registry():
-        if entry["id"] != agent_id:
-            continue
-        skills = entry.get("skills", [])
-        if skill_name not in skills:
-            return [{"type": "text", "text": json.dumps({
-                "status": "no_match",
-                "summary": f"Skill '{skill_name}' not available for agent '{agent_id}'. Available: {skills}"
-            })}]
-        if _LOCAL and LOCAL_HUB.is_dir():
-            pkg = LOCAL_HUB
-        else:
-            pkg = get_cached(entry["id"], entry["version"]) or download_agent(entry.get("repository", ""), entry["id"], entry["version"])
-        skill_md = _find_md(pkg, "skills", f"{skill_name}.skill.md")
-        if skill_md:
-            return [{"type": "text", "text": skill_md.read_text(encoding="utf-8", errors="replace")}]
-        return [{"type": "text", "text": json.dumps({
-            "status": "no_match",
-            "summary": f"Skill file '{skill_name}.skill.md' not found"
-        })}]
-    return [{"type": "text", "text": json.dumps({
-        "status": "no_match",
-        "summary": f"Agent '{agent_id}' not found in registry"
-    })}]
-
-
-def handle_run_tool(agent_id: str, tool_name: str, params: Dict[str, Any],
-
-                    workspace: str = "", output_dir: str = "biosherpa_output") -> List[Dict[str, Any]]:
-    # Log what agent/tool is being called for debugging
-    sys.stderr.write(f"[BioSherpa] Dispatching agent={agent_id} tool={tool_name}\n")
-    sys.stderr.flush()
-    for entry in fetch_registry():
-        if entry["id"] != agent_id:
-            continue
-        if _LOCAL and LOCAL_HUB.is_dir():
-            pkg = LOCAL_HUB
-            runner = LOCAL_HUB / "run_agent.py"
-        else:
-            pkg = get_cached(entry["id"], entry["version"])
-            if pkg is None:
-                pkg = download_agent(entry.get("repository", ""), entry["id"], entry["version"])
-            runner = find_run_agent(pkg)
-        # Merge output_dir from params if not explicitly passed at top level
-        if output_dir == "biosherpa_output" and "output_dir" in params:
-            output_dir = str(params["output_dir"])
-            outdir = Path(output_dir)
-        if "workspace" not in params and workspace:
-            params["workspace"] = workspace
-        # Resolve relative input file paths against workspace
-        _file_keys = ["counts_file", "metadata_file", "expr_file", "deg_file"]
-        for key in _file_keys:
-            val = params.get(key, "")
-            if val and not Path(val).is_absolute() and workspace:
-                params[key] = str(Path(workspace) / val)
-        if workspace and not outdir.is_absolute():
-            outdir = Path(workspace) / outdir
-        outdir.mkdir(parents=True, exist_ok=True)
-        params["output_dir"] = str(outdir)
-        cmd = [
-            sys.executable, str(runner),
-            "--agent", agent_id, "--tool", tool_name,
-            "--params", json.dumps(params),
-        ]
-        r_libs = os.environ.get("R_LIBS_USER", "")
-        if r_libs:
-            cmd.extend(["--r-libs-user", r_libs])
-        result = subprocess.run(cmd, capture_output=True, timeout=AGENT_TIMEOUT, cwd=str(pkg))
-        run_stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
-        run_stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
-        # Parse agent JSON from stdout for detailed R error diagnostics
-        agent_result = {}
-        try:
-            agent_result = json.loads(run_stdout.strip())
-        except json.JSONDecodeError:
-            pass
-        items = collect_outputs(outdir)
-        if run_stderr:
-            items.insert(0, {"type": "text", "text": f"=== DIAGNOSTIC (run_agent) ===\n{stderr}"})
-        # Layer 2: R stderr from agent JSON (most useful for debugging)
-        agent_stderr = agent_result.get("stderr", "")
-        if agent_stderr:
-            items.insert(0, {"type": "text", "text": f"=== R DIAGNOSTIC ===\n{agent_stderr}"})
-        # Layer 3: agent-level errors
-        if agent_result.get("status") == "error":
-            errors = agent_result.get("errors", [agent_result.get("summary", "Unknown error")])
-            items.insert(0, {"type": "text", "text": f"=== ERROR ===\n" + "\n".join(errors)})
-        if result.returncode != 0:
-            items.insert(0, {"type": "text", "text": f"Exit code: {result.returncode}"})
-        items.append({"type": "text", "text": _location_summary(outdir)})
-        return items
-    return [{"type": "text", "text": json.dumps({
-        "status": "no_match", "summary": f"Agent '{agent_id}' not found in registry"
-    })}]
-
-
-def collect_outputs(outdir: Path) -> List[Dict[str, Any]]:
-    import base64
-    items: List[Dict[str, Any]] = []
-    for f in sorted(outdir.iterdir()):
-        if not f.is_file():
-            continue
-        if f.suffix == ".csv":
-            lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
-            total = len(lines)
-            preview = "\n".join(lines[:20])
-            suffix = f"\n... ({total - 20} more rows)" if total > 20 else ""
-            items.append({"type": "text", "text": (
-                f"=== {f.name} ({total} rows, {f.stat().st_size:,} bytes) ===\n"
-                f"[Full path: {f.resolve()}]\n{preview}{suffix}"
-            )})
-        elif f.suffix == ".png":
-            b64 = base64.b64encode(f.read_bytes()).decode("ascii")
-            items.append({"type": "image", "data": b64, "mimeType": "image/png"})
-        elif f.suffix == ".json":
-            text = f.read_text(encoding="utf-8", errors="replace")
-            preview = text[:500]
-            suffix = "..." if len(text) > 500 else ""
-            items.append({"type": "text", "text": (
-                f"=== {f.name} ({f.stat().st_size:,} bytes) ===\n"
-                f"[Full path: {f.resolve()}]\n{preview}{suffix}"
-            )})
-        else:
-            items.append({"type": "text", "text": (
-                f"Output: {f.name} ({f.stat().st_size:,} bytes) -> {f.resolve()}"
-            )})
-    return items
-
-
-def _location_summary(outdir: Path) -> str:
-    files = sorted(f for f in outdir.iterdir() if f.is_file())
-    if not files:
-        return f"[BioSherpa] No output files found in {outdir.resolve()}"
-    lines = [f"[BioSherpa] {len(files)} output file(s) saved to {outdir.resolve()}:"]
-    for f in files:
-        lines.append(f"  - {f.name} ({f.stat().st_size:,} bytes)")
-    return "\n".join(lines)
-
-
-def execute_tool(tool_name: str, args: Dict[str, Any]) -> List[Dict[str, Any]]:
-    if tool_name == "find_biosherpa_agent":
-        return handle_find_agent(args.get("query", ""))
-    elif tool_name == "load_biosherpa_skill":
-        return handle_load_skill(args.get("agent_id", ""), args.get("skill_name", ""))
-    elif tool_name == "run_biosherpa_tool":
-        params = args.get("params", {})
-        if isinstance(params, str):
-            params = json.loads(params)
-        return handle_run_tool(
-            args.get("agent_id", ""), args.get("tool_name", ""), params,
-            workspace=args.get("workspace", ""),
-            output_dir=args.get("output_dir", "biosherpa_output"),
-        )
-    return [{"type": "text", "text": json.dumps({"status": "no_match", "summary": f"Unknown tool: {tool_name}"})}]
-
-
-def handle_request(req: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    rid = req.get("id")
-    method = req.get("method", "")
-    if method == "initialize":
-        return {"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "biosherpa-mcp", "version": "0.1.0"}}}
-    if method == "notifications/initialized":
-        return None
-    if method == "tools/list":
-        return {"jsonrpc": "2.0", "id": rid, "result": {"tools": build_tools()}}
-    if method == "tools/call":
-        p = req.get("params", {})
-        content = execute_tool(p.get("name", ""), p.get("arguments", {}))
-        return {"jsonrpc": "2.0", "id": rid, "result": {"content": content}}
-    return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"Unknown method: {method}"}}
-
-
-def main() -> None:
-    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
-    # Startup health check -- report issues but don't block
-    deps = _check_dependencies()
-    if deps:
-        sys.stderr.write("[BioSherpa] WARNING: Dependency issues detected:\n")
-        for issue in deps:
-            sys.stderr.write(f"  - {issue}\n")
-        sys.stderr.write("[BioSherpa] Some tools may fail until resolved.\n")
-        sys.stderr.flush()
-    for line in sys.stdin:
-        line = line.strip()
-        if not line: continue
-        try: request = json.loads(line)
-        except json.JSONDecodeError: continue
-        response = handle_request(request)
-        if response is not None:
-            sys.stdout.write(json.dumps(response) + "\n")
-            sys.stdout.flush()
-
-
-if __name__ == "__main__":
-    main()
+ #!/usr/bin/env Rscript
+ # ---------------------------------------------------------------------------
+ # BioSherpa GO Enrichment — clusterProfiler GO (BP/MF/CC) with PDF+PNG output
+ # Supports: DEG result files (logFC or log2FoldChange) or plain gene lists
+ # ---------------------------------------------------------------------------
+ .libPaths(unique(c(.libPaths(), Sys.getenv("R_LIBS_USER"))))
+ 
+ suppressPackageStartupMessages({
+   library(optparse)
+   library(clusterProfiler)
+   library(enrichplot)
+   library(ggplot2)
+ })
+ 
+ option_list <- list(
+   make_option("--deg-file", type="character", help="DEG results TSV/CSV or gene list file"),
+   make_option("--organism", type="character", default="org.Hs.eg.db",
+               help="OrgDb package (org.Hs.eg.db, org.Mm.eg.db, …)"),
+   make_option("--output-dir", type="character", default=".", help="Output directory"),
+   make_option("--pvalue-cutoff", type="double", default=0.05, help="P-value cutoff"),
+   make_option("--qvalue-cutoff", type="double", default=0.2, help="Q-value cutoff")
+ )
+ opts <- parse_args(OptionParser(option_list=option_list))
+ 
+ # ——— Read input: auto-detect format —————————————————————————————————
+ ext <- tolower(tools::file_ext(opts[["deg-file"]]))
+ if (ext == "csv") {
+   deg <- read.csv(opts[["deg-file"]], stringsAsFactors=FALSE, check.names=FALSE)
+ } else {
+   deg <- read.delim(opts[["deg-file"]], stringsAsFactors=FALSE, check.names=FALSE)
+ }
+ 
+ # ——— Determine input mode ———————————————————————————————————————————
+ cat(sprintf("Input: %d rows × %d cols\n", nrow(deg), ncol(deg)))
+ cat(sprintf("Columns: %s\n", paste(colnames(deg), collapse=", ")))
+ is_gene_list <- ncol(deg) == 1 ||
+   (!"log2FoldChange" %in% colnames(deg) && !any(c("pvalue", "padj") %in% colnames(deg)))
+ if (is_gene_list) {
+   gene_symbols <- na.omit(as.character(deg[[1]]))
+   gene_symbols <- gene_symbols[gene_symbols != ""]
+   cat(sprintf("Gene list mode: %d symbols loaded\n", length(gene_symbols)))
+ } else {
+   fc_col <- "log2FoldChange"
+   if (!fc_col %in% colnames(deg))
+     stop("No fold-change column found (need logFC or log2FoldChange)")
+   pval_col <- intersect(c("pvalue", "padj"), colnames(deg))[1]
+   if (is.na(pval_col))
+     stop("No p-value column found (need pvalue or padj)")
+   sig <- deg[!is.na(deg[[pval_col]]) & deg[[pval_col]] < opts[["pvalue-cutoff"]] &
+              !is.na(deg[[fc_col]]) & abs(deg[[fc_col]]) > 0.5, ]
+   gene_symbols <- na.omit(as.character(sig[[1]]))
+   gene_symbols <- gene_symbols[gene_symbols != ""]
+   cat(sprintf("DEG mode: %d significant genes\n", length(gene_symbols)))
+ }
+ 
+ if (length(gene_symbols) < 3) {
+   cat("WARNING: Fewer than 3 genes for GO enrichment\n")
+   if (length(gene_symbols) == 0) quit(status=0)
+ }
+ 
+ # ——— Dynamic OrgDb loading ——————————————————————————————————————————
+ orgdb_name <- opts[["organism"]]
+ cat(sprintf("Loading organism database: %s\n", orgdb_name))
+ if (!requireNamespace(orgdb_name, quietly=TRUE)) {
+   stop(sprintf("OrgDb package '%s' not installed. Install: BiocManager::install('%s')",
+                orgdb_name, orgdb_name))
+ }
+ suppressPackageStartupMessages(library(orgdb_name, character.only=TRUE))
+ orgdb <- get(orgdb_name)
+ 
+ # ——— SYMBOL → ENTREZID conversion ————————————————————————————————
+ entrez_result <- tryCatch(
+   bitr(gene_symbols, fromType="SYMBOL", toType="ENTREZID", OrgDb=orgdb),
+   error=function(e) {
+     cat(sprintf("bitr conversion failed: %s\n", e$message)); return(NULL)
+   }
+ )
+ 
+ if (is.null(entrez_result) || nrow(entrez_result) == 0) {
+   cat("ERROR: No genes could be converted to ENTREZ IDs.\n")
+   cat(sprintf("  Input symbols: %d\n", length(gene_symbols)))
+   cat(sprintf("  Check that gene symbols match %s.\n", orgdb_name))
+   quit(status=0)
+ }
+ 
+ entrez_ids <- unique(entrez_result$ENTREZID)
+ conv_rate <- round(length(entrez_ids) / length(gene_symbols) * 100, 1)
+ cat(sprintf("SYMBOL→ENTREZID: %d/%d genes converted (%.1f%%)\n",
+             length(entrez_ids), length(gene_symbols), conv_rate))
+ 
+ if (conv_rate < 30) {
+   cat("WARNING: Low conversion rate. Check organism database and gene symbols.\n")
+ }
+ 
+ # ——— Run GO enrichment for BP, MF, CC ——————————————————————————————
+ dir.create(opts[["output-dir"]], showWarnings=FALSE, recursive=TRUE)
+ out <- opts[["output-dir"]]
+ ontologies <- c("BP", "MF", "CC")
+ results <- list()
+ file_n <- 0
+ 
+ for (ont in ontologies) {
+   cat(sprintf("Running GO %s enrichment…\n", ont))
+   ego <- tryCatch(
+     enrichGO(gene=entrez_ids, OrgDb=orgdb, ont=ont, keyType="ENTREZID",
+              pvalueCutoff=opts[["pvalue-cutoff"]],
+              qvalueCutoff=opts[["qvalue-cutoff"]]),
+     error=function(e) {
+       cat(sprintf("  GO %s failed: %s\n", ont, e$message)); return(NULL)
+     }
+   )
+   results[[ont]] <- ego
+ 
+   if (is.null(ego)) {
+     cat(sprintf("GO %s: execution error\n", ont))
+     next
+   }
+   if (nrow(ego) == 0) {
+     cat(sprintf("GO %s: no enriched terms\n", ont))
+     next
+   }
+ 
+   ont_lower <- tolower(ont)
+ 
+   # —— CSV ——
+   file_n <- file_n + 1
+   csv_path <- file.path(out, sprintf("%d_go_%s.csv", file_n, ont_lower))
+   write.csv(as.data.frame(ego), csv_path, row.names=FALSE)
+ 
+   # —— Bar plot (PDF + PNG) ——
+   bp <- barplot(ego, showCategory=min(15, nrow(ego)),
+                 title=sprintf("GO %s Enrichment", ont))
+   file_n <- file_n + 1
+   ggsave(file.path(out, sprintf("%d_go_%s_barplot.pdf", file_n, ont_lower)),
+          bp, width=10, height=7)
+   ggsave(file.path(out, sprintf("%d_go_%s_barplot.png", file_n, ont_lower)),
+          bp, width=10, height=7, dpi=150)
+ 
+   # —— Dot plot (PDF + PNG) ——
+   dp <- dotplot(ego, showCategory=min(15, nrow(ego)),
+                 title=sprintf("GO %s Enrichment", ont))
+   file_n <- file_n + 1
+   ggsave(file.path(out, sprintf("%d_go_%s_dotplot.pdf", file_n, ont_lower)),
+          dp, width=10, height=7)
+   ggsave(file.path(out, sprintf("%d_go_%s_dotplot.png", file_n, ont_lower)),
+          dp, width=10, height=7, dpi=150)
+ 
+   # —— cnetplot (gene-term network) ——
+   if (nrow(ego) >= 2) {
+     tryCatch({
+       file_n <- file_n + 1
+       cp <- cnetplot(ego, showCategory=min(5, nrow(ego)))
+       pdf(file.path(out, sprintf("%d_go_%s_cnetplot.pdf", file_n, ont_lower)),
+           width=12, height=10)
+       print(cp)
+       dev.off()
+       ggsave(file.path(out, sprintf("%d_go_%s_cnetplot.png", file_n, ont_lower)),
+              cp, width=12, height=10, dpi=150)
+     }, error=function(e) cat(sprintf("  GO %s cnetplot failed: %s\n", ont, e$message)))
+ 
+     # —— chord diagram (circular cnetplot, requires circlize) ——
+     if (requireNamespace("circlize", quietly=TRUE)) {
+       tryCatch({
+         file_n <- file_n + 1
+         cp2 <- cnetplot(ego, showCategory=min(5, nrow(ego)),
+                         circular=TRUE, colorEdge=TRUE)
+         pdf(file.path(out, sprintf("%d_go_%s_chord.pdf", file_n, ont_lower)),
+             width=10, height=10)
+         print(cp2)
+         dev.off()
+         ggsave(file.path(out, sprintf("%d_go_%s_chord.png", file_n, ont_lower)),
+                cp2, width=10, height=10, dpi=150)
+       }, error=function(e) cat(sprintf("  GO %s chord failed: %s\n", ont, e$message)))
+     }
+   }
+ 
+   cat(sprintf("GO %s: %d terms saved\n", ont, nrow(ego)))
+ }
+ 
+ # ——— Summary ————————————————————————————————————————————————————————
+ total_terms <- sum(sapply(results, function(x) if (is.null(x)) 0 else nrow(x)))
+ active_onts <- sum(sapply(results, function(x) !is.null(x) && nrow(x) > 0))
+ cat(sprintf("GO enrichment complete: %d terms across %d ontologies\n",
+             total_terms, active_onts))
+ 
+ # ——— Generate reproducible code —————————————————————————————————————
+ code_lines <- c(
+   "#!/usr/bin/env Rscript",
+   paste("# Generated:", Sys.time()),
+   "suppressPackageStartupMessages({library(clusterProfiler); library(enrichplot); library(ggplot2)})",
+   sprintf("library(%s)", orgdb_name),
+   sprintf('deg_file <- "%s"', opts[["deg-file"]]),
+   sprintf('outdir <- "%s"', out),
+   sprintf("orgdb <- %s", orgdb_name),
+   'deg <- read.csv(deg_file, stringsAsFactors=FALSE)',
+   'gene_symbols <- na.omit(as.character(deg[[1]]))',
+   'entrez_result <- bitr(gene_symbols, fromType="SYMBOL", toType="ENTREZID", OrgDb=orgdb)',
+   'entrez_ids <- unique(entrez_result$ENTREZID)',
+   'for (ont in c("BP","MF","CC")) {',
+   '  ego <- enrichGO(gene=entrez_ids, OrgDb=orgdb, ont=ont, keyType="ENTREZID",',
+   sprintf('               pvalueCutoff=%s, qvalueCutoff=%s)',
+           opts[["pvalue-cutoff"]], opts[["qvalue-cutoff"]]),
+   '  if (!is.null(ego) && nrow(ego) > 0) {',
+   '    write.csv(as.data.frame(ego),',
+   '              file.path(outdir, paste0("go_", tolower(ont), ".csv")),',
+   '              row.names=FALSE)',
+   '    ggsave(file.path(outdir, paste0("go_", tolower(ont), "_barplot.png")),',
+   '           barplot(ego, showCategory=15), width=10, height=7, dpi=150)',
+   '    ggsave(file.path(outdir, paste0("go_", tolower(ont), "_dotplot.png")),',
+   '           dotplot(ego, showCategory=15), width=10, height=7, dpi=150)',
+   '  }',
+   '}',
+   'cat("GO enrichment complete\\n")'
+ )
+ code_str <- paste(code_lines, collapse="\n")
+ file_n <- file_n + 1
+ code_path <- file.path(out, sprintf("%d_analysis_code.R", file_n))
+ writeLines(code_str, code_path)
+ cat("Reproducible code written to:", code_path, "\n")
