@@ -12,6 +12,14 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 
+# Verify shared.py exists (required by agents and handlers)
+if not (_HERE / "shared.py").is_file():
+    print(json.dumps({
+        "status": "error",
+        "summary": "shared.py not found in agent package. Update BioSherpaHub GitHub repo and clear cache (~/.biosherpa/cache/)."
+    }))
+    sys.exit(1)
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="BioSherpa Agent Tool Runner")
     p.add_argument("--agent", required=True, help="Agent name (e.g. transcriptome)")
