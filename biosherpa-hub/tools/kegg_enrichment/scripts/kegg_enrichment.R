@@ -118,11 +118,13 @@ if (is.null(ekegg) || (is.data.frame(ekegg) && nrow(ekegg) == 0)) {
 # --- Save results ---
 dir.create(opts[["output-dir"]], showWarnings=FALSE, recursive=TRUE)
 out <- opts[["output-dir"]]
+file_n <- 0
 
 if (is.null(ekegg)) {
   cat("KEGG enrichment produced no results (execution error).\n")
 } else if (nrow(ekegg) == 0) {
-  csv_path <- file.path(out, "kegg_enrichment.csv")
+  file_n <- file_n + 1
+  csv_path <- file.path(out, sprintf("%d_kegg_enrichment.csv", file_n + 1))
   write.csv(data.frame(Note="No enriched KEGG pathways found"), csv_path, row.names=FALSE)
   cat("KEGG enrichment: 0 pathways enriched.\n")
   cat(sprintf("  Input genes: %d, converted to ENTREZ: %d\n",
@@ -130,33 +132,67 @@ if (is.null(ekegg)) {
   cat("  Possible reasons: no pathways passed p/q thresholds, or organism mismatch.\n")
 } else {
   # CSV
-  csv_path <- file.path(out, "kegg_enrichment.csv")
+  file_n <- file_n + 1
+  csv_path <- file.path(out, sprintf("%d_kegg_enrichment.csv", file_n + 1))
   write.csv(as.data.frame(ekegg), csv_path, row.names=FALSE)
   # Bar plot (PDF + PNG)
   bp <- barplot(ekegg, showCategory=min(15, nrow(ekegg)),
                 title="KEGG Pathway Enrichment")
-  ggsave(file.path(out, "kegg_barplot.pdf"), bp, width=10, height=7)
-  ggsave(file.path(out, "kegg_barplot.png"), bp, width=10, height=7, dpi=150)
+  file_n <- file_n + 1
+  ggsave(file.path(out, sprintf("%d_kegg_barplot.pdf", file_n)), bp, width=10, height=7)
+  ggsave(file.path(out, sprintf("%d_kegg_barplot.png", file_n)), bp, width=10, height=7, dpi=150)
   # Dot plot (PDF + PNG)
   dp <- dotplot(ekegg, showCategory=min(15, nrow(ekegg)),
                 title="KEGG Pathway Enrichment")
-  ggsave(file.path(out, "kegg_dotplot.pdf"), dp, width=10, height=7)
-  ggsave(file.path(out, "kegg_dotplot.png"), dp, width=10, height=7, dpi=150)
+  file_n <- file_n + 1
+  ggsave(file.path(out, sprintf("%d_kegg_dotplot.pdf", file_n)), dp, width=10, height=7)
+  ggsave(file.path(out, sprintf("%d_kegg_dotplot.png", file_n)), dp, width=10, height=7, dpi=150)
   # cnetplot (gene-pathway network)
   if (nrow(ekegg) >= 2) {
     tryCatch({
+      file_n <- file_n + 1
       cp <- cnetplot(ekegg, showCategory=min(5, nrow(ekegg)))
-      ggsave(file.path(out, "kegg_cnetplot.pdf"), cp, width=12, height=10)
-      ggsave(file.path(out, "kegg_cnetplot.png"), cp, width=12, height=10, dpi=150)
+      pdf(file.path(out, sprintf("%d_kegg_cnetplot.pdf", file_n)), width=12, height=10)
+      print(cp)
+      dev.off()
+      ggsave(file.path(out, sprintf("%d_kegg_cnetplot.png", file_n)), cp, width=12, height=10, dpi=150)
     }, error=function(e) cat(sprintf("KEGG cnetplot failed: %s\n", e$message)))
     # chord diagram (circular cnetplot, requires circlize)
     if (requireNamespace("circlize", quietly=TRUE)) {
       tryCatch({
+        file_n <- file_n + 1
         cp2 <- cnetplot(ekegg, showCategory=min(5, nrow(ekegg)), circular=TRUE, colorEdge=TRUE)
-        ggsave(file.path(out, "kegg_chord.pdf"), cp2, width=10, height=10)
-        ggsave(file.path(out, "kegg_chord.png"), cp2, width=10, height=10, dpi=150)
+        pdf(file.path(out, sprintf("%d_kegg_chord.pdf", file_n)), width=10, height=10)
+        print(cp2)
+        dev.off()
+        ggsave(file.path(out, sprintf("%d_kegg_chord.png", file_n)), cp2, width=10, height=10, dpi=150)
       }, error=function(e) cat(sprintf("KEGG chord failed: %s\n", e$message)))
     }
   }
+# --- Generate reproducible code ---
+code_lines <- c(
+  "#!/usr/bin/env Rscript",
+  paste("# Generated:", Sys.time()),
+  "suppressPackageStartupMessages({library(clusterProfiler); library(enrichplot); library(ggplot2); library(org.Hs.eg.db)})",
+  sprintf('deg_file <- "%s"', opts[["deg-file"]]),
+  sprintf('organism <- "%s"', opts[["organism"]]),
+  sprintf('outdir <- "%s"', out),
+  'deg <- read.csv(deg_file, stringsAsFactors=FALSE)',
+  'gene_symbols <- na.omit(as.character(deg[[1]]))',
+  'entrez_result <- bitr(gene_symbols, fromType="SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db)',
+  'entrez_ids <- unique(entrez_result$ENTREZID)',
+  'ekegg <- enrichKEGG(gene=entrez_ids, organism=organism, pvalueCutoff=%s, qvalueCutoff=%s)' % (opts[["pvalue-cutoff"]], opts[["qvalue-cutoff"]]),
+  'if (!is.null(ekegg) && nrow(ekegg) > 0) {',
+  '  write.csv(as.data.frame(ekegg), file.path(outdir, "kegg_enrichment.csv"), row.names=FALSE)',
+  '  ggsave(file.path(outdir, "kegg_barplot.png"), barplot(ekegg, showCategory=15), width=10, height=7, dpi=150)',
+  '  ggsave(file.path(outdir, "kegg_dotplot.png"), dotplot(ekegg, showCategory=15), width=10, height=7, dpi=150)',
+  '}',
+  'cat("KEGG enrichment complete\n")'
+)
+code_str <- paste(code_lines, collapse="\n")
+file_n <- file_n + 1
+writeLines(code_str, file.path(out, sprintf("%d_analysis_code.R", file_n)))
+cat("Reproducible code written to:", file.path(out, sprintf("%d_analysis_code.R", file_n)), "\n")
+
   cat(sprintf("KEGG enrichment: %d pathways saved\n", nrow(ekegg)))
 }

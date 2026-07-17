@@ -78,6 +78,7 @@ for (ont in ontologies) {
 # --- Save results ---
 dir.create(opts[["output-dir"]], showWarnings=FALSE, recursive=TRUE)
 out <- opts[["output-dir"]]
+file_n <- 0  # sequential file counter
 total_terms <- 0
 
 for (ont in ontologies) {
@@ -88,40 +89,77 @@ for (ont in ontologies) {
   }
   # CSV
   csv_path <- file.path(out, sprintf("go_enrichment_%s.csv", tolower(ont)))
+  file_n <- file_n + 1
+  csv_path <- file.path(out, sprintf("%d_go_enrichment_%s.csv", file_n, tolower(ont)))
   write.csv(as.data.frame(ego), csv_path, row.names=FALSE)
   # Bar plot (PDF + PNG)
+  file_n <- file_n + 1
   bp <- barplot(ego, showCategory=min(15, nrow(ego)),
                 title=sprintf("GO %s Enrichment", ont))
-  pdf_path <- file.path(out, sprintf("go_barplot_%s.pdf", tolower(ont)))
-  png_path <- file.path(out, sprintf("go_barplot_%s.png", tolower(ont)))
+  pdf_path <- file.path(out, sprintf("%d_go_barplot_%s.pdf", file_n, tolower(ont)))
+  png_path <- file.path(out, sprintf("%d_go_barplot_%s.png", file_n, tolower(ont)))
   ggsave(pdf_path, bp, width=10, height=7)
   ggsave(png_path, bp, width=10, height=7, dpi=150)
   # Dot plot (PDF + PNG)
+  file_n <- file_n + 1
   dp <- dotplot(ego, showCategory=min(15, nrow(ego)),
                 title=sprintf("GO %s Enrichment", ont))
-  pdf_path2 <- file.path(out, sprintf("go_dotplot_%s.pdf", tolower(ont)))
-  png_path2 <- file.path(out, sprintf("go_dotplot_%s.png", tolower(ont)))
+  pdf_path2 <- file.path(out, sprintf("%d_go_dotplot_%s.pdf", file_n, tolower(ont)))
+  png_path2 <- file.path(out, sprintf("%d_go_dotplot_%s.png", file_n, tolower(ont)))
   ggsave(pdf_path2, dp, width=10, height=7)
   ggsave(png_path2, dp, width=10, height=7, dpi=150)
   # cnetplot (gene-term network)
   if (nrow(ego) >= 2) {
     tryCatch({
+      file_n <- file_n + 1
       cp <- cnetplot(ego, showCategory=min(5, nrow(ego)))
-      ggsave(file.path(out, sprintf("go_cnetplot_%s.pdf", tolower(ont))), cp, width=12, height=10)
-      ggsave(file.path(out, sprintf("go_cnetplot_%s.png", tolower(ont))), cp, width=12, height=10, dpi=150)
+      pdf(file.path(out, sprintf("%d_go_cnetplot_%s.pdf", file_n, tolower(ont))), width=12, height=10)
+      print(cp)
+      dev.off()
+      ggsave(file.path(out, sprintf("%d_go_cnetplot_%s.png", file_n, tolower(ont))), cp, width=12, height=10, dpi=150)
     }, error=function(e) cat(sprintf("  GO %s cnetplot failed: %s\n", ont, e$message)))
     # chord diagram (circular cnetplot, requires circlize)
     if (requireNamespace("circlize", quietly=TRUE)) {
       tryCatch({
+        file_n <- file_n + 1
         cp2 <- cnetplot(ego, showCategory=min(5, nrow(ego)), circular=TRUE, colorEdge=TRUE)
-        ggsave(file.path(out, sprintf("go_chord_%s.pdf", tolower(ont))), cp2, width=10, height=10)
-        ggsave(file.path(out, sprintf("go_chord_%s.png", tolower(ont))), cp2, width=10, height=10, dpi=150)
+        pdf(file.path(out, sprintf("%d_go_chord_%s.pdf", file_n, tolower(ont))), width=10, height=10)
+        print(cp2)
+        dev.off()
+        ggsave(file.path(out, sprintf("%d_go_chord_%s.png", file_n, tolower(ont))), cp2, width=10, height=10, dpi=150)
       }, error=function(e) cat(sprintf("  GO %s chord failed: %s\n", ont, e$message)))
     }
   }
   total_terms <- total_terms + nrow(ego)
   cat(sprintf("GO %s: %d terms saved\n", ont, nrow(ego)))
 }
+
+# --- Generate reproducible code ---
+code_lines <- c(
+  "#!/usr/bin/env Rscript",
+  paste("# Generated:", Sys.time()),
+  "suppressPackageStartupMessages({library(clusterProfiler); library(enrichplot); library(ggplot2)})",
+  sprintf('deg_file <- "%s"', opts[["deg-file"]]),
+  sprintf('organism <- "%s"', opts[["organism"]]),
+  sprintf('outdir <- "%s"', out),
+  sprintf('pval <- %s; qval <- %s', opts[["pvalue-cutoff"]], opts[["qvalue-cutoff"]]),
+  'deg <- read.csv(deg_file, stringsAsFactors=FALSE)',
+  'genes <- na.omit(as.character(deg[[1]]))',
+  sprintf('suppressPackageStartupMessages(library(%s, character.only=TRUE))', opts[["organism"]]),
+  'for (ont in c("BP","MF","CC")) {',
+  '  ego <- enrichGO(gene=genes, OrgDb=get(organism), ont=ont, keyType="SYMBOL", pvalueCutoff=pval, qvalueCutoff=qval)',
+  '  if (!is.null(ego) && nrow(ego) > 0) {',
+  sprintf('    write.csv(as.data.frame(ego), file.path(outdir, paste0("go_enrichment_", tolower(ont), ".csv")), row.names=FALSE)'),
+  '    ggsave(file.path(outdir, paste0("go_barplot_", tolower(ont), ".png")), barplot(ego, showCategory=15), width=10, height=7, dpi=150)',
+  '    ggsave(file.path(outdir, paste0("go_dotplot_", tolower(ont), ".png")), dotplot(ego, showCategory=15), width=10, height=7, dpi=150)',
+  '  }',
+  '}',
+  'cat("GO enrichment complete\n")'
+)
+code_str <- paste(code_lines, collapse="\n")
+file_n <- file_n + 1
+writeLines(code_str, file.path(out, sprintf("%d_analysis_code.R", file_n)))
+cat("Reproducible code written to:", file.path(out, sprintf("%d_analysis_code.R", file_n)), "\n")
 
 cat(sprintf("GO enrichment complete: %d total enriched terms across %d ontologies\n",
             total_terms, length(ontologies)))

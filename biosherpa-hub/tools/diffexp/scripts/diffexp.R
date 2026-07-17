@@ -407,6 +407,18 @@ code_lines <- c(
   sprintf('outdir <- "%s"', outdir),
   sprintf('pval_cut <- %s; lfc_thresh <- %s; use_padj <- %s', pval_cut, lfc_thresh, use_padj),
   "",
+  "# --- DE analysis ---",
+  if (method=="deseq2") paste(c(
+    "counts <- as.matrix(expr_data); storage.mode(counts) <- 'integer'",
+    "dds <- DESeqDataSetFromMatrix(countData=counts, colData=metadata, design=design_formula)",
+    "dds <- dds[rowSums(counts(dds)) > 0, ]",
+    "dds <- DESeq(dds)",
+    "res <- as.data.frame(results(dds))",
+    "res$gene_id <- rownames(res)",
+    "vsd <- if(nrow(dds)>=50) vst(dds,blind=TRUE) else varianceStabilizingTransformation(dds,blind=TRUE)",
+    "expr_transformed <- assay(vsd)"
+  ), collapse="\n") else "",
+  "",
   "# --- PCA plot ---",
   "pca_data <- as.data.frame(t(expr_transformed))",
   "data.pca <- PCA(pca_data, graph=FALSE)",
