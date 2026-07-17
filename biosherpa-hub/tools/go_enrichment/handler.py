@@ -30,11 +30,11 @@ def main(argv: Optional[List[str]] = None) -> int:
            "--pvalue-cutoff", str(args.pvalue_cutoff),
            "--qvalue-cutoff", str(args.qvalue_cutoff)]
     try:
-    result = subprocess.run(cmd, capture_output=True, encoding="utf-8",
+        result = subprocess.run(cmd, capture_output=True, encoding="utf-8",
                             errors="replace", timeout=_DEFAULT_TIMEOUT,
                             env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", "C:/tmp/Rlib")})
-    if result.stdout: print(result.stdout)
-    if result.stderr: print(result.stderr, file=sys.stderr)
+        if result.stdout: print(result.stdout)
+        if result.stderr: print(result.stderr, file=sys.stderr)
         return 0
     except subprocess.CalledProcessError as exc:
         print(exc.stderr.decode("utf-8", errors="replace"), file=sys.stderr)
