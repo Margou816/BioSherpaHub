@@ -136,11 +136,15 @@ def build_command(
 def run_analysis(
     cmd: List[str],
     timeout: int = _DEFAULT_TIMEOUT,
+    encoding: str = "utf-8",
+    errors: str = "replace",
 ) -> subprocess.CompletedProcess:
     """Run the DESeq2 R script via subprocess with UTF-8 encoding."""
     return subprocess.run(
         cmd,
         capture_output=True,
+        encoding=encoding,
+        errors=errors,
         text=False,
         timeout=timeout
     )
@@ -251,10 +255,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"[BioSherpa] Running: {' '.join(cmd)}")
 
         # 4. Run analysis
-        result = run_analysis(cmd)
-
-        stdout_text = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
-        stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        result = run_analysis(cmd, encoding="utf-8", errors="replace")
+        stdout_text = result.stdout or ""
+        stderr_text = result.stderr or ""
         if stdout_text:
             print(stdout_text)
         if stderr_text:

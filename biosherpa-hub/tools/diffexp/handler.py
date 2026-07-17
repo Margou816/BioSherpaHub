@@ -55,10 +55,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         cmd.append("--pca-label")
 
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=_DEFAULT_TIMEOUT,
+        result = subprocess.run(cmd, capture_output=True, encoding="utf-8",
+                                errors="replace", timeout=_DEFAULT_TIMEOUT,
                                 env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", "C:/tmp/Rlib")})
-        r_stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
-        r_stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        r_stdout = result.stdout or ""
+        r_stderr = result.stderr or ""
         if r_stdout:
             print(r_stdout)
         if r_stderr:

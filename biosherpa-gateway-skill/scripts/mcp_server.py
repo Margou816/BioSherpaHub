@@ -295,9 +295,10 @@ def handle_run_tool(agent_id: str, tool_name: str, params: Dict[str, Any],
         r_libs = os.environ.get("R_LIBS_USER", "")
         if r_libs:
             cmd.extend(["--r-libs-user", r_libs])
-        result = subprocess.run(cmd, capture_output=True, timeout=AGENT_TIMEOUT, cwd=str(pkg))
-        run_stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
-        run_stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
+        result = subprocess.run(cmd, capture_output=True, encoding="utf-8",
+                                errors="replace", timeout=AGENT_TIMEOUT, cwd=str(pkg))
+        run_stderr = result.stderr or ""
+        run_stdout = result.stdout or ""
         # Parse agent JSON from stdout for detailed R error diagnostics
         agent_result = {}
         try:

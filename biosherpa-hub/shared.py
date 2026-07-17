@@ -150,18 +150,19 @@ def dispatch_tool(
 
     # Build environment
     env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
     if env_extra:
         for k, v in env_extra.items():
             if v:
                 env[k] = v
 
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=timeout, env=env)
-        stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        result = subprocess.run(cmd, capture_output=True, encoding="utf-8",
+                                errors="replace", timeout=timeout, env=env)
         return {
             "status": "success",
             "summary": f"{tool_name} completed (exit {result.returncode})",
-            "stderr": stderr,
+            "stderr": result.stderr or "",
         }
     except subprocess.TimeoutExpired:
         return {

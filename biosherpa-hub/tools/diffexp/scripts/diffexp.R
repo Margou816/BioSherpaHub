@@ -10,6 +10,11 @@
 
 .libPaths(unique(c(.libPaths(), Sys.getenv("R_LIBS_USER"))))
 
+# Force English locale for clean pipeline I/O on Windows GBK systems
+if (.Platform$OS.type == "windows") {
+  invisible(try(Sys.setlocale("LC_ALL", "English"), silent=TRUE))
+}
+
 # --- Preflight: verify required R packages ---
 cat(sprintf("R version: %s\n", R.version.string))
 required_pkgs <- c("optparse", "ggplot2", "ggrepel", "pheatmap", "FactoMineR", "factoextra", "scales")

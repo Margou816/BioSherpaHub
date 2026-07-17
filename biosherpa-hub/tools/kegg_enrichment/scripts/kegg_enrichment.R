@@ -5,6 +5,11 @@
 # ---------------------------------------------------------------------------
 .libPaths(unique(c(.libPaths(), Sys.getenv("R_LIBS_USER"))))
 
+# Force English locale for clean pipeline I/O on Windows GBK systems
+if (.Platform$OS.type == "windows") {
+  invisible(try(Sys.setlocale("LC_ALL", "English"), silent=TRUE))
+}
+
 suppressPackageStartupMessages({
   library(optparse)
   library(clusterProfiler)

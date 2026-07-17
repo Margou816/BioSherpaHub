@@ -46,11 +46,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=_DEFAULT_TIMEOUT, env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", "C:/tmp/Rlib")})
+        result = subprocess.run(cmd, capture_output=True, encoding="utf-8",
+                                errors="replace", timeout=_DEFAULT_TIMEOUT,
+                                env={**os.environ, "R_LIBS_USER": os.environ.get("R_LIBS_USER", "C:/tmp/Rlib")})
         if result.stdout:
-            print(result.stdout.decode("utf-8", errors="replace"))
+            print(result.stdout)
         if result.stderr:
-            print(result.stderr.decode("utf-8", errors="replace"), file=sys.stderr)
+            print(result.stderr, file=sys.stderr)
         return 0
     except subprocess.CalledProcessError as exc:
         if exc.stderr:
